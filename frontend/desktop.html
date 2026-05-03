@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Desktop Client</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="desktop-page">
+  <main class="desktop-shell">
+    <header class="desktop-header">
+      <div>
+        <a class="back-link" href="index.html">← Все клиенты</a>
+        <p class="eyebrow">Desktop Client</p>
+        <h1>Monitoring Console</h1>
+        <p class="desktop-subtitle">Мониторинг неисправностей, очередей и аудита в единой операторской панели.</p>
+      </div>
+      <form id="loginForm" class="desktop-login">
+        <input name="email" type="email" required value="temp-admin@example.com">
+        <input name="password" type="password" required value="Admin123!">
+        <button type="submit">Войти</button>
+      </form>
+    </header>
+    <div id="errorBox" class="error-box hidden"></div>
+    <section class="desktop-summary">
+      <article class="summary-card">
+        <span>Fault Feed</span>
+        <strong>Live</strong>
+      </article>
+      <article class="summary-card">
+        <span>Queue Sync</span>
+        <strong>5 sec</strong>
+      </article>
+      <article class="summary-card">
+        <span>Audit Mode</span>
+        <strong>Enabled</strong>
+      </article>
+    </section>
+    <section class="monitor-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Сессия</h2>
+          <button id="refreshMonitoring" type="button">Обновить всё</button>
+        </div>
+        <div id="sessionInfo" class="muted">Не авторизован</div>
+      </section>
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Monitoring</h2>
+        </div>
+        <div id="desktopMonitoring" class="table-wrap empty-state">Нет данных</div>
+      </section>
+      <section id="expertPanel" class="panel role-section hidden">
+        <div class="panel-header">
+          <h2>Техник-эксперт</h2>
+          <button id="refreshFaults" type="button">Неисправности</button>
+        </div>
+        <form id="expertForm" class="stack-form">
+          <label>Неисправность
+            <select name="faultId" id="faultSelect">
+              <option value="">Сначала загрузите неисправности</option>
+            </select>
+          </label>
+          <label>Приоритет<input name="priority" type="text" value="high"></label>
+          <label>Рекомендация<input name="recommendationText" type="text" value="Провести диагностику и заменить изношенный узел"></label>
+          <div class="inline-form">
+            <button id="confirmFault" type="button">Подтвердить</button>
+            <button id="createRecommendation" type="submit">Создать рекомендацию</button>
+          </div>
+        </form>
+        <pre id="expertResult" class="json-box">Ожидает действия</pre>
+      </section>
+      <section id="dispatcherPanel" class="panel role-section hidden">
+        <div class="panel-header">
+          <h2>Диспетчеризация</h2>
+          <button id="refreshRecommendations" type="button">Рекомендации</button>
+        </div>
+        <form id="dispatcherForm" class="stack-form">
+          <label>Рекомендация
+            <select name="recommendationId" id="recommendationSelect">
+              <option value="">Сначала загрузите рекомендации</option>
+            </select>
+          </label>
+          <label>Дата плана<input name="plannedDate" type="date" value="2026-04-30"></label>
+          <button type="submit">Создать план и задачи</button>
+        </form>
+        <pre id="dispatcherResult" class="json-box">Ожидает действия</pre>
+      </section>
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Transactions</h2>
+        </div>
+        <div id="desktopTransactions" class="table-wrap empty-state">Нет данных</div>
+      </section>
+      <section class="panel">
+        <div class="panel-header">
+          <h2>API Config</h2>
+        </div>
+        <label>API URL<input id="apiBaseInput" type="text"></label>
+        <button id="saveApiBase" type="button">Сохранить URL</button>
+        <p class="muted">Этот экран подходит для desktop-monitoring и аудита.</p>
+      </section>
+    </section>
+  </main>
+  <script src="app.js"></script>
+  <script>
+    initDesktopClient();
+  </script>
+</body>
+</html>
