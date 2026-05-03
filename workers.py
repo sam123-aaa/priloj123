@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from io import BytesIO
 from datetime import datetime
 from html import escape
@@ -7,6 +8,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from database import get_db
 from queue_app import celery_app
+from observability import record_worker_task
 from services.cache import invalidate_read_cache
 from task_status import set_task_status
 
@@ -140,6 +142,7 @@ def _build_report_html_preview(job_id: str, report_type: str, user_id: int, gene
 if celery_app is not None:
     @celery_app.task(bind=True, name="workers.generate_report")
     def generate_report(self, job_id: str, report_type: str, user_id: int):
+        started_at = time.perf_counter()
         set_task_status(job_id, "in_progress", {"report_type": report_type, "user_id": user_id})
         logger.info(
             "Starting report generation job_id=%s report_type=%s user_id=%s",
@@ -257,4 +260,5 @@ if celery_app is not None:
 
         logger.info("Completed report generation job_id=%s", job_id)
         invalidate_read_cache()
+        record_worker_task("workers.generate_report", "completed", (time.perf_counter() - started_at) * 1000)
         return result
