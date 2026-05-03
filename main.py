@@ -116,8 +116,14 @@ async def security_and_metrics_middleware(request: Request, call_next):
                 "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
                 "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
                 "img-src 'self' data: https://fastapi.tiangolo.com; "
-                "connect-src 'self'"
+                "connect-src 'self'; "
+                "object-src 'none'; "
+                "base-uri 'self'; "
+                "frame-ancestors 'none'"
             )
+            if request.url.path in {"/login", "/auth/refresh"}:
+                response.headers["Cache-Control"] = "no-store"
+                response.headers["Pragma"] = "no-cache"
             response.headers["X-RateLimit-Limit"] = str(SECURITY_RATE_LIMIT_PER_MINUTE)
             response.headers["X-RateLimit-Remaining"] = str(max(remaining, 0))
             response.headers["X-Request-Duration-Ms"] = f"{duration_ms:.2f}"
@@ -553,7 +559,7 @@ async def create_plan(data: PlanData, user=Depends(require_role("dispatcher_spec
 @app.get("/specialist/recommendations", tags=["Specialist"])
 async def dispatcher_recommendations(user=Depends(require_role("dispatcher_specialist", "admin"))):
     with get_session() as session:
-        return get_dispatcher_recommendations(session, user)
+        return _cached_query("specialist_recommendations", user, lambda: get_dispatcher_recommendations(session, user))
 
 
 @app.get("/mechanic/tasks", tags=["Mechanic"])
@@ -628,7 +634,7 @@ async def check(task_id: int, data: QualityCheckData, user=Depends(require_role(
 @app.get("/quality/tasks", tags=["Quality"])
 async def quality_tasks(user=Depends(require_role("quality_engineer", "admin"))):
     with get_session() as session:
-        return get_quality_tasks(session, user)
+        return _cached_query("quality_tasks", user, lambda: get_quality_tasks(session, user))
 
 
 @app.post("/reports/generate", tags=["Reports"])
@@ -674,7 +680,7 @@ async def report_jobs(
 ):
     with get_db() as conn:
         key = ("report_jobs", user.get("role_code"), user.get("user_id"), limit)
-        return cached_read(key, lambda: get_recent_report_jobs(conn, user, limit=limit))
+        return _cached_query(key, user, lambda: get_recent_report_jobs(conn, user, limit=limit))
 
 
 @app.get("/reports/document/{task_id}", tags=["Reports"])
@@ -736,11 +742,11 @@ async def bff_web_dashboard(user=Depends(require_role("admin", "dispatcher_speci
 @app.get("/bff/web/manager-home", tags=["BFF Web"])
 async def bff_web_manager_home(user=Depends(require_role("manager", "admin"))):
     with get_db() as conn:
-        return {
+        return _cached_query("bff_web_manager_home", user, lambda: {
             "dashboard": get_web_dashboard(conn, user),
             "templates": get_report_templates(conn, user),
             "recent_reports": get_recent_report_jobs(conn, user),
-        }
+        })
 
 
 @app.get("/bff/web/reports", tags=["BFF Web"])
@@ -749,9 +755,10 @@ async def bff_web_reports(
     user=Depends(require_role("manager", "admin")),
 ):
     with get_db() as conn:
-        return {
+        key = ("bff_web_reports", user.get("role_code"), user.get("user_id"), limit)
+        return _cached_query(key, user, lambda: {
             "reports": get_recent_report_jobs(conn, user, limit=limit),
-        }
+        })
 
 
 @app.post("/bff/web/reports/generate", tags=["BFF Web"])
@@ -886,7 +893,7 @@ async def bff_mobile_quality_check(
 @app.get("/bff/mobile/quality/tasks", tags=["BFF Mobile"])
 async def bff_mobile_quality_tasks(user=Depends(require_role("quality_engineer", "admin"))):
     with get_session() as session:
-        return get_quality_tasks(session, user)
+        return _cached_query("bff_mobile_quality_tasks", user, lambda: get_quality_tasks(session, user))
 
 
 @app.get("/bff/mobile/components", tags=["BFF"])
