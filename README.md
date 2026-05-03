@@ -90,3 +90,28 @@ celery -A workers.celery_app worker --loglevel=info
 ```
 
 Then verify `/docs`, run login, call a command endpoint, and inspect `/observability/hot-points` as an admin.
+
+## Defense Checklist
+
+Use this checklist during the teacher review:
+
+1. Git workflow:
+   `git branch -a` and `git log --oneline --graph --decorate --all` show `main`, `develop`, `feature/*`, standardized commits and merge flow.
+2. Pull Request quality:
+   `.github/pull_request_template.md` documents what changed, how to verify it and the security checklist.
+3. Observability:
+   `/observability/metrics` shows requests, errors, average duration, record counts and grouped areas: `GET list`, `command`, `worker`.
+4. Hot points:
+   `/observability/hot-points` ranks slow/error-prone/high-traffic endpoints.
+5. Cache:
+   `services/cache.py` provides read cache, and command handlers call `invalidate_read_cache()` after writes.
+6. CQRS:
+   `services/commands.py` contains state-changing operations, while `services/queries.py` contains read models/lists.
+7. Queue:
+   `queue_app.py` configures Celery and `workers.py` processes report generation in the background.
+8. Validation and mass assignment:
+   `schemas.py` uses strict DTOs with `extra="forbid"` so fields like `is_admin`, `role` or `owner_id` are rejected.
+9. Access control:
+   `rbac.py` and query ownership filters use the user from the token, not user-controlled request fields.
+10. API security:
+    `main.py` contains rate limiting, CSP, CORS allow-listing and no-store auth responses.
