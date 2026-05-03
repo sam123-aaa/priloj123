@@ -1,3 +1,5 @@
+# priloj123
+
 # Maintenance API
 
 FastAPI backend for a maintenance workflow with RBAC, CQRS-style command/query separation, Redis/Celery background jobs, audit logging and BFF endpoints for web, mobile and desktop clients.
@@ -70,7 +72,7 @@ Read-cache entries are short-lived and are invalidated after every command that 
 
 ## Git Workflow
 
-The submitted folder is not currently a git repository. For delivery, initialize or clone it as a repo and use:
+The repository uses:
 
 - Branch strategy: `main` for stable code, `develop` for integration, `feature/<task-name>` for each task.
 - Feature branches: one task equals one branch, for example `feature/security-validation`.
