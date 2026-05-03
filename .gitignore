@@ -1,0 +1,46 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+.venv_win/
+.venv_mobile/
+venv/
+env/
+
+# Logs and runtime output
+*.log
+*.out
+*.err
+backend.dev.out.log
+backend.dev.err.log
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Frontend dependencies/build output
+node_modules/
+dist/
+build/
+.next/
+.vite/
+
+# Local generated files
+*.sqlite
+*.db
+*.docx
