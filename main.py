@@ -17,7 +17,7 @@ from audit import log_transaction
 from auth import ALGORITHM, SECRET_KEY, create_local_auth_token, create_local_refresh_token
 from config import ALLOWED_CORS_ORIGINS, SECURITY_RATE_LIMIT_PER_MINUTE
 from database import get_db
-from dependencies import cache_token_user, get_user_from_token, require_role
+from dependencies import cache_token_user, get_user_from_token, normalize_bearer_token, require_role
 from logging_config import setup_logging
 from observability import check_rate_limit, hot_points_snapshot, metrics_snapshot, record_count, record_request
 from orm import get_session
@@ -694,6 +694,7 @@ async def report_document(
         access_token = authorization.split(" ", 1)[1]
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    access_token = normalize_bearer_token(access_token)
 
     user = get_user_from_token(access_token)
     if user["role_code"] not in {"manager", "admin"}:

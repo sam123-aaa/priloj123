@@ -14,7 +14,15 @@ _TOKEN_USER_CACHE = {}
 _TOKEN_USER_CACHE_TTL = timedelta(minutes=15)
 
 
+def normalize_bearer_token(token: str):
+    cleaned_token = (token or "").strip().strip('"').strip("'")
+    while cleaned_token.lower().startswith("bearer "):
+        cleaned_token = cleaned_token.split(" ", 1)[1].strip()
+    return cleaned_token
+
+
 def cache_token_user(token: str, user: dict):
+    token = normalize_bearer_token(token)
     _TOKEN_USER_CACHE[token] = {
         "expires_at": datetime.utcnow() + _TOKEN_USER_CACHE_TTL,
         "user": user,
@@ -22,6 +30,7 @@ def cache_token_user(token: str, user: dict):
 
 
 def _get_cached_token_user(token: str):
+    token = normalize_bearer_token(token)
     cached = _TOKEN_USER_CACHE.get(token)
     if not cached:
         return None
@@ -111,6 +120,7 @@ def _try_local_dev_token(token):
 
 
 def get_user_from_token(token: str):
+    token = normalize_bearer_token(token)
     local_user = _try_local_dev_token(token)
     if local_user:
         return local_user
