@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mobile Client</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="mobile-page">
+  <main class="mobile-shell">
+    <header class="mobile-header">
+      <a class="back-link" href="index.html">← Все клиенты</a>
+      <div>
+        <p class="eyebrow">Mobile Client</p>
+        <h1>Полевые операции</h1>
+      </div>
+    </header>
+    <div id="errorBox" class="error-box hidden"></div>
+    <section class="mobile-card">
+      <form id="loginForm" class="stack-form">
+        <h2>Авторизация</h2>
+        <label>Email<input name="email" type="email" required value="temp-mechanic@example.com"></label>
+        <label>Пароль<input name="password" type="password" required value="Mechanic123!"></label>
+        <button type="submit">Войти</button>
+        <p id="sessionInfo" class="muted">Не авторизован</p>
+      </form>
+    </section>
+    <section id="mechanicSection" class="mobile-card role-section">
+      <div class="panel-header">
+        <h2>Задачи механика</h2>
+        <button id="refreshTasks" type="button">Обновить</button>
+      </div>
+      <div id="mobileTasks" class="task-list empty-state">Нет задач</div>
+      <form id="taskActionForm" class="stack-form">
+        <label>Задача
+          <select name="taskId" id="mechanicTaskSelect">
+            <option value="">Сначала обновите задачи</option>
+          </select>
+        </label>
+        <label>Действие
+          <select name="action">
+            <option value="start">start</option>
+            <option value="finish">finish</option>
+            <option value="cancel">cancel</option>
+          </select>
+        </label>
+        <label>Результат для finish<input name="result" type="text" value="completed via mobile"></label>
+        <button type="submit">Отправить статус</button>
+      </form>
+      <pre id="taskActionResult" class="json-box">Ожидает действия</pre>
+    </section>
+    <section id="metrologistSection" class="mobile-card role-section hidden">
+      <div class="panel-header">
+        <h2>Сбор измерения</h2>
+        <button id="refreshComponents" type="button">Компоненты</button>
+      </div>
+      <form id="measurementForm" class="stack-form">
+        <label>Компонент
+          <select name="componentId" id="componentSelect">
+            <option value="">Сначала загрузите компоненты</option>
+          </select>
+        </label>
+        <label>Параметр<input name="parameterName" type="text" required value="temperature"></label>
+        <label>Значение<input name="value" type="number" step="0.1" required value="55"></label>
+        <label>Единицы<input name="unit" type="text" required value="C"></label>
+        <button type="submit">Отправить measurement</button>
+      </form>
+      <div id="measurementResult" class="muted"></div>
+    </section>
+    <section id="qualitySection" class="mobile-card role-section hidden">
+      <div class="panel-header">
+        <h2>Контроль качества</h2>
+        <button id="refreshQualityTasks" type="button">Обновить</button>
+      </div>
+      <div id="qualityTasks" class="task-list empty-state">Нет задач на проверку</div>
+      <form id="qualityForm" class="stack-form">
+        <label>Задача
+          <select name="taskId" id="qualityTaskSelect">
+            <option value="">Сначала обновите задачи</option>
+          </select>
+        </label>
+        <label>Статус проверки
+          <select name="status">
+            <option value="passed">passed</option>
+            <option value="failed">failed</option>
+            <option value="needs_rework">needs_rework</option>
+          </select>
+        </label>
+        <label>Примечание<input name="notes" type="text" required value="Проверка завершена"></label>
+        <button type="submit">Сохранить проверку</button>
+      </form>
+      <pre id="qualityResult" class="json-box">Ожидает проверки</pre>
+    </section>
+  </main>
+  <script src="app.js"></script>
+  <script>
+    initMobileClient();
+  </script>
+</body>
+</html>
