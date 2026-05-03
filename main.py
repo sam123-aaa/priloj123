@@ -116,8 +116,14 @@ async def security_and_metrics_middleware(request: Request, call_next):
                 "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
                 "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
                 "img-src 'self' data: https://fastapi.tiangolo.com; "
-                "connect-src 'self'"
+                "connect-src 'self'; "
+                "object-src 'none'; "
+                "base-uri 'self'; "
+                "frame-ancestors 'none'"
             )
+            if request.url.path in {"/login", "/auth/refresh"}:
+                response.headers["Cache-Control"] = "no-store"
+                response.headers["Pragma"] = "no-cache"
             response.headers["X-RateLimit-Limit"] = str(SECURITY_RATE_LIMIT_PER_MINUTE)
             response.headers["X-RateLimit-Remaining"] = str(max(remaining, 0))
             response.headers["X-Request-Duration-Ms"] = f"{duration_ms:.2f}"
