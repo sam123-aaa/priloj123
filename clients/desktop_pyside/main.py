@@ -213,9 +213,8 @@ class DesktopWindow(QMainWindow):
         auth_row.setSpacing(10)
         self.api_label = QLabel("API")
         self.api_label.setObjectName("FieldLabel")
-        self.api_label.setVisible(self.debug_mode)
         self.api_base = QLineEdit("http://127.0.0.1:8000")
-        self.api_base.setVisible(self.debug_mode)
+        self.api_base.setPlaceholderText("API")
         self.email = QLineEdit("temp-techexpert@example.com")
         self.email.setPlaceholderText("Электронная почта")
         self.password = QLineEdit("Expert123!")
@@ -668,7 +667,7 @@ class DesktopWindow(QMainWindow):
         )
         for widget in self.auth_widgets:
             if widget in {self.api_label, self.api_base}:
-                widget.setVisible((not signed_in) and self.debug_mode)
+                widget.setVisible(not signed_in)
             else:
                 widget.setVisible(not signed_in)
         self.workspace_scroll.setVisible(signed_in)
