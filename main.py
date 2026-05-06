@@ -82,6 +82,7 @@ from services.admin_security import (
     set_account_status,
 )
 from services.security import generate_csrf_token, safe_download_filename, verify_csrf_request
+from services.login_protection import login_key, login_protection_service
 from task_status import get_task_status
 import workers  # noqa: F401
 
@@ -428,81 +429,97 @@ async def api_change_user_role(
 
 
 @app.post("/login", tags=["Auth"])#№А
-async def login(data: LoginData):
-    try:
-        auth_result = sign_in_with_password(data.email, data.password)
-    except HTTPException as exc:
-        if exc.status_code in {400, 401, 503}:
-            return _login_with_local_fallback(data, str(exc.detail))
-        raise
-    auth_user = auth_result.get("user") or {}
-    auth_user_id = auth_user.get("id")
-    if not auth_user_id:
-        raise HTTPException(status_code=401, detail="Supabase Auth login failed")
-
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT
-                r.code AS role
-            FROM user_roles ur
-            JOIN roles r ON r.id = ur.role_id
-            WHERE ur.user_id = %s
-            ORDER BY CASE WHEN r.code = 'admin' THEN 0 ELSE 1 END, r.id
-            LIMIT 1
-            """,
-            (auth_user_id,),
+async def login(data: LoginData, request: Request):
+    protection_key = login_key(data.email, request.client.host if request.client else "unknown")
+    blocked_seconds = login_protection_service.check_blocked_seconds(protection_key)
+    if blocked_seconds > 0:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed login attempts. Try again in {blocked_seconds} seconds.",
         )
-        role_row = cur.fetchone()
 
-        if not role_row:
+    try:
+        try:
+            auth_result = sign_in_with_password(data.email, data.password)
+        except HTTPException as exc:
+            if exc.status_code in {400, 401, 503}:
+                response = _login_with_local_fallback(data, str(exc.detail))
+                login_protection_service.register_success(protection_key)
+                return response
+            raise
+        auth_user = auth_result.get("user") or {}
+        auth_user_id = auth_user.get("id")
+        if not auth_user_id:
+            raise HTTPException(status_code=401, detail="Supabase Auth login failed")
+
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT
+                    r.code AS role
+                FROM user_roles ur
+                JOIN roles r ON r.id = ur.role_id
+                WHERE ur.user_id = %s
+                ORDER BY CASE WHEN r.code = 'admin' THEN 0 ELSE 1 END, r.id
+                LIMIT 1
+                """,
+                (auth_user_id,),
+            )
+            role_row = cur.fetchone()
+
+            if not role_row:
+                log_transaction(
+                    conn,
+                    action="login_failed",
+                    endpoint="/login",
+                    details={"email": data.email, "reason": "role_not_found", "auth_user_id": auth_user_id},
+                )
+                raise HTTPException(403, "Роль пользователя не назначена")
+
+            cur.execute(
+                """
+                SELECT legacy_user_id, COALESCE(is_active, TRUE) AS is_active
+                FROM profiles
+                WHERE user_id = %s
+                """,
+                (auth_user_id,),
+            )
+            profile = cur.fetchone()
+            if profile and not profile["is_active"]:
+                raise HTTPException(status_code=403, detail="Account is disabled")
+            legacy_user_id = profile["legacy_user_id"] if profile else None
+
             log_transaction(
                 conn,
-                action="login_failed",
+                action="login_success",
                 endpoint="/login",
-                details={"email": data.email, "reason": "role_not_found", "auth_user_id": auth_user_id},
+                user_id=legacy_user_id,
+                role_code=role_row["role"],
+                details={"email": data.email, "role_code": role_row["role"], "auth_user_id": auth_user_id},
             )
-            raise HTTPException(403, "Роль пользователя не назначена")
+            cache_token_user(
+                auth_result["access_token"],
+                {
+                    "user_id": legacy_user_id,
+                    "auth_user_id": auth_user_id,
+                    "email": data.email,
+                    "role": role_row["role"],
+                    "role_code": role_row["role"],
+                },
+            )
 
-        cur.execute(
-            """
-            SELECT legacy_user_id, COALESCE(is_active, TRUE) AS is_active
-            FROM profiles
-            WHERE user_id = %s
-            """,
-            (auth_user_id,),
-        )
-        profile = cur.fetchone()
-        if profile and not profile["is_active"]:
-            raise HTTPException(status_code=403, detail="Account is disabled")
-        legacy_user_id = profile["legacy_user_id"] if profile else None
-
-        log_transaction(
-            conn,
-            action="login_success",
-            endpoint="/login",
-            user_id=legacy_user_id,
-            role_code=role_row["role"],
-            details={"email": data.email, "role_code": role_row["role"], "auth_user_id": auth_user_id},
-        )
-        cache_token_user(
-            auth_result["access_token"],
-            {
-                "user_id": legacy_user_id,
-                "auth_user_id": auth_user_id,
-                "email": data.email,
+            login_protection_service.register_success(protection_key)
+            return {
+                "access_token": auth_result["access_token"],
+                "refresh_token": auth_result.get("refresh_token"),
+                "token_type": "bearer",
                 "role": role_row["role"],
-                "role_code": role_row["role"],
-            },
-        )
-
-        return {
-            "access_token": auth_result["access_token"],
-            "refresh_token": auth_result.get("refresh_token"),
-            "token_type": "bearer",
-            "role": role_row["role"],
-        }
+            }
+    except HTTPException as exc:
+        if exc.status_code in {400, 401, 403}:
+            login_protection_service.register_failure(protection_key)
+        raise
 
 
 @app.post("/auth/refresh", tags=["Auth"])
