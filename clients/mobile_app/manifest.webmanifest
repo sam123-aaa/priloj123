@@ -1,0 +1,9 @@
+{
+  "name": "Maintenance Mobile",
+  "short_name": "Maintenance",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f6fb",
+  "theme_color": "#f4f6fb",
+  "icons": []
+}

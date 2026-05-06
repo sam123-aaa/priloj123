@@ -4,8 +4,9 @@ import json
 import logging
 import os
 import time
+from uuid import UUID
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -15,7 +16,15 @@ from jose import JWTError, jwt
 
 from audit import log_transaction
 from auth import ALGORITHM, SECRET_KEY, create_local_auth_token, create_local_refresh_token
-from config import ALLOWED_CORS_ORIGINS, SECURITY_RATE_LIMIT_PER_MINUTE
+from config import (
+    ALLOWED_CORS_ORIGINS,
+    CSRF_COOKIE_NAME,
+    CSRF_COOKIE_SAMESITE,
+    CSRF_COOKIE_SECURE,
+    CSRF_HEADER_NAME,
+    CSRF_TRUSTED_ORIGINS,
+    SECURITY_RATE_LIMIT_PER_MINUTE,
+)
 from database import get_db
 from dependencies import cache_token_user, get_user_from_token, normalize_bearer_token, require_role
 from logging_config import setup_logging
@@ -32,6 +41,8 @@ from schemas import (
     RecommendationData,
     RefreshTokenData,
     ReportData,
+    AccountStatusData,
+    RoleChangeData,
     TaskResultData,
 )
 from supabase_auth import refresh_session, sign_in_with_password
@@ -63,6 +74,14 @@ from services.queries import (
     get_web_dashboard,
 )
 from services.cache import cached_read, invalidate_read_cache, read_cache_stats
+from services.admin_security import (
+    change_user_role,
+    ensure_admin_security_schema,
+    list_roles,
+    list_users,
+    set_account_status,
+)
+from services.security import generate_csrf_token, safe_download_filename, verify_csrf_request
 from task_status import get_task_status
 import workers  # noqa: F401
 
@@ -78,9 +97,53 @@ app.add_middleware(
 )
 
 
+def _rate_limit_subject(request: Request) -> str:
+    authorization = request.headers.get("authorization", "")
+    if not authorization.lower().startswith("bearer "):
+        return "anonymous"
+    token = normalize_bearer_token(authorization.split(" ", 1)[1])
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        try:
+            payload = jwt.get_unverified_claims(token)
+        except JWTError:
+            return "invalid-token"
+    return str(payload.get("sub") or payload.get("email") or "bearer-token")
+
+
+def _content_security_policy(path: str) -> str:
+    if path == "/docs":
+        return (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data: https://fastapi.tiangolo.com; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'"
+        )
+    return (
+        "default-src 'none'; "
+        "connect-src 'self'; "
+        "img-src 'self' data:; "
+        "object-src 'none'; "
+        "base-uri 'none'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'"
+    )
+
+
 @app.middleware("http")
 async def security_and_metrics_middleware(request: Request, call_next):
-    allowed, remaining = check_rate_limit(request, SECURITY_RATE_LIMIT_PER_MINUTE)
+    try:
+        verify_csrf_request(request, CSRF_TRUSTED_ORIGINS, CSRF_COOKIE_NAME, CSRF_HEADER_NAME)
+    except HTTPException as exc:
+        record_request(request.method, request.url.path, exc.status_code, 0)
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+    allowed, remaining = check_rate_limit(request, SECURITY_RATE_LIMIT_PER_MINUTE, _rate_limit_subject(request))
     if not allowed:
         record_request(request.method, request.url.path, 429, 0)
         return JSONResponse(
@@ -111,16 +174,7 @@ async def security_and_metrics_middleware(request: Request, call_next):
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["Referrer-Policy"] = "no-referrer"
             response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
-            response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                "img-src 'self' data: https://fastapi.tiangolo.com; "
-                "connect-src 'self'; "
-                "object-src 'none'; "
-                "base-uri 'self'; "
-                "frame-ancestors 'none'"
-            )
+            response.headers["Content-Security-Policy"] = _content_security_policy(request.url.path)
             if request.url.path in {"/login", "/auth/refresh"}:
                 response.headers["Cache-Control"] = "no-store"
                 response.headers["Pragma"] = "no-cache"
@@ -140,6 +194,7 @@ def _cached_query(name, user, loader):
 async def ensure_report_document_storage():
     try:
         with get_db() as conn:
+            ensure_admin_security_schema(conn)
             cur = conn.cursor()
             cur.execute(
                 """
@@ -215,6 +270,7 @@ def _login_with_local_fallback(data: LoginData, reason: str):
             SELECT
                 p.user_id AS auth_user_id,
                 p.legacy_user_id,
+                COALESCE(p.is_active, TRUE) AS is_active,
                 r.code AS role
             FROM profiles p
             JOIN user_roles ur ON ur.user_id = p.user_id
@@ -228,6 +284,8 @@ def _login_with_local_fallback(data: LoginData, reason: str):
         user = cur.fetchone()
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
+        if not user["is_active"]:
+            raise HTTPException(status_code=403, detail="Account is disabled")
 
         token_payload = {
             "email": email,
@@ -290,6 +348,27 @@ async def custom_swagger_ui_html():
     return HTMLResponse(html)
 
 
+@app.get("/csrf-token", tags=["Security"])
+async def csrf_token():
+    token = generate_csrf_token()
+    response = JSONResponse(
+        {
+            "csrf_token": token,
+            "header_name": CSRF_HEADER_NAME,
+            "cookie_name": CSRF_COOKIE_NAME,
+        }
+    )
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=token,
+        httponly=False,
+        secure=CSRF_COOKIE_SECURE,
+        samesite=CSRF_COOKIE_SAMESITE,
+        max_age=3600,
+    )
+    return response
+
+
 @app.get("/observability/metrics", tags=["Observability"])
 async def observability_metrics(user=Depends(require_role("admin"))):
     return {
@@ -307,7 +386,48 @@ async def observability_hot_points(limit: int = Query(10, ge=1, le=50), user=Dep
     }
 
 
-@app.post("/login", tags=["Auth"])
+@app.get("/api/users", tags=["Admin Security"])
+async def api_users(user=Depends(require_role("admin"))):
+    with get_db() as conn:
+        rows = list_users(conn)
+        log_transaction(
+            conn,
+            action="admin_users_viewed",
+            endpoint="/api/users",
+            user_id=user["user_id"],
+            role_code=user["role_code"],
+            details={"count": len(rows)},
+        )
+        return rows
+
+
+@app.get("/api/roles", tags=["Admin Security"])
+async def api_roles(user=Depends(require_role("admin"))):
+    with get_db() as conn:
+        return list_roles(conn)
+
+
+@app.post("/api/users/{user_id}/account-status", tags=["Admin Security"])
+async def api_set_account_status(
+    data: AccountStatusData,
+    user_id: int = Path(..., gt=0),
+    user=Depends(require_role("admin")),
+):
+    with get_db() as conn:
+        return set_account_status(conn, user_id, data.is_active, data.admin_password, data.reason, user)
+
+
+@app.post("/api/users/{user_id}/role", tags=["Admin Security"])
+async def api_change_user_role(
+    data: RoleChangeData,
+    user_id: int = Path(..., gt=0),
+    user=Depends(require_role("admin")),
+):
+    with get_db() as conn:
+        return change_user_role(conn, user_id, data.role_code, data.admin_password, data.reason, user)
+
+
+@app.post("/login", tags=["Auth"])#№А
 async def login(data: LoginData):
     try:
         auth_result = sign_in_with_password(data.email, data.password)
@@ -347,13 +467,15 @@ async def login(data: LoginData):
 
         cur.execute(
             """
-            SELECT legacy_user_id
+            SELECT legacy_user_id, COALESCE(is_active, TRUE) AS is_active
             FROM profiles
             WHERE user_id = %s
             """,
             (auth_user_id,),
         )
         profile = cur.fetchone()
+        if profile and not profile["is_active"]:
+            raise HTTPException(status_code=403, detail="Account is disabled")
         legacy_user_id = profile["legacy_user_id"] if profile else None
 
         log_transaction(
@@ -578,7 +700,7 @@ async def mechanic_tasks(user=Depends(require_role("mechanic", "admin"))):
 
 
 @app.post("/mechanic/start/{task_id}", tags=["Mechanic"])
-async def start_task(task_id: int, user=Depends(require_role("mechanic", "admin"))):
+async def start_task(task_id: int = Path(..., gt=0), user=Depends(require_role("mechanic", "admin"))):
     with get_session() as session:
         try:
             return transition_task_status(session, task_id, MaintenanceTaskStatus.ACTIVE.value, user)
@@ -589,7 +711,7 @@ async def start_task(task_id: int, user=Depends(require_role("mechanic", "admin"
 
 
 @app.post("/mechanic/finish/{task_id}", tags=["Mechanic"])
-async def finish_task(task_id: int, data: TaskResultData, user=Depends(require_role("mechanic", "admin"))):
+async def finish_task(data: TaskResultData, task_id: int = Path(..., gt=0), user=Depends(require_role("mechanic", "admin"))):
     with get_session() as session:
         try:
             return transition_task_status(
@@ -606,7 +728,7 @@ async def finish_task(task_id: int, data: TaskResultData, user=Depends(require_r
 
 
 @app.post("/mechanic/cancel/{task_id}", tags=["Mechanic"])
-async def cancel_task(task_id: int, user=Depends(require_role("mechanic", "admin"))):
+async def cancel_task(task_id: int = Path(..., gt=0), user=Depends(require_role("mechanic", "admin"))):
     with get_session() as session:
         try:
             return transition_task_status(session, task_id, MaintenanceTaskStatus.CANCELLED.value, user)
@@ -617,7 +739,7 @@ async def cancel_task(task_id: int, user=Depends(require_role("mechanic", "admin
 
 
 @app.post("/quality/check/{task_id}", tags=["Quality"])
-async def check(task_id: int, data: QualityCheckData, user=Depends(require_role("quality_engineer", "admin"))):
+async def check(data: QualityCheckData, task_id: int = Path(..., gt=0), user=Depends(require_role("quality_engineer", "admin"))):
     with get_db() as conn:
         result = create_quality_check(conn, task_id, data.status, data.notes, user)
         log_transaction(
@@ -664,10 +786,11 @@ async def report_templates(user=Depends(require_role("manager", "admin"))):
 
 
 @app.get("/reports/status/{task_id}", tags=["Reports"])
-async def report_status(task_id: str, user=Depends(require_role("manager", "admin"))):
-    redis_status = get_task_status(task_id)
+async def report_status(task_id: UUID, user=Depends(require_role("manager", "admin"))):
+    task_id_value = str(task_id)
+    redis_status = get_task_status(task_id_value)
     with get_db() as conn:
-        read_model = get_report_status(conn, task_id, user)
+        read_model = get_report_status(conn, task_id_value, user)
         if not redis_status and not read_model:
             raise HTTPException(status_code=404, detail="Задача не найдена")
         return {"queue": redis_status, "read_model": read_model}
@@ -685,7 +808,7 @@ async def report_jobs(
 
 @app.get("/reports/document/{task_id}", tags=["Reports"])
 async def report_document(
-    task_id: str,
+    task_id: UUID,
     token: Optional[str] = None,
     authorization: Optional[str] = Header(None),
 ):
@@ -700,17 +823,19 @@ async def report_document(
     if user["role_code"] not in {"manager", "admin"}:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
+    task_id_value = str(task_id)
     with get_db() as conn:
-        document = get_report_document(conn, task_id, user)
+        document = get_report_document(conn, task_id_value, user)
         if not document:
             raise HTTPException(status_code=404, detail="Документ отчёта ещё не сформирован")
         file_content = document.get("file_content")
         if file_content is None:
             raise HTTPException(status_code=404, detail="DOCX-файл ещё не сформирован")
+        file_name = safe_download_filename(document.get("file_name"), "report.docx")
         return Response(
             content=bytes(file_content),
             media_type=document["content_type"],
-            headers={"Content-Disposition": f'attachment; filename="{document["file_name"]}"'},
+            headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
         )
 
 
@@ -821,7 +946,7 @@ def _mobile_task_response(command_result, user):
 
 
 @app.post("/bff/mobile/mechanic/tasks/{task_id}/start", tags=["BFF Mobile"])
-async def bff_mobile_start_task(task_id: int, user=Depends(require_role("mechanic", "admin"))):
+async def bff_mobile_start_task(task_id: int = Path(..., gt=0), user=Depends(require_role("mechanic", "admin"))):
     with get_session() as session:
         try:
             command_result = transition_task_status(session, task_id, MaintenanceTaskStatus.ACTIVE.value, user)
@@ -834,8 +959,8 @@ async def bff_mobile_start_task(task_id: int, user=Depends(require_role("mechani
 
 @app.post("/bff/mobile/mechanic/tasks/{task_id}/finish", tags=["BFF Mobile"])
 async def bff_mobile_finish_task(
-    task_id: int,
     data: TaskResultData,
+    task_id: int = Path(..., gt=0),
     user=Depends(require_role("mechanic", "admin")),
 ):
     with get_session() as session:
@@ -855,7 +980,7 @@ async def bff_mobile_finish_task(
 
 
 @app.post("/bff/mobile/mechanic/tasks/{task_id}/cancel", tags=["BFF Mobile"])
-async def bff_mobile_cancel_task(task_id: int, user=Depends(require_role("mechanic", "admin"))):
+async def bff_mobile_cancel_task(task_id: int = Path(..., gt=0), user=Depends(require_role("mechanic", "admin"))):
     with get_session() as session:
         try:
             command_result = transition_task_status(session, task_id, MaintenanceTaskStatus.CANCELLED.value, user)
@@ -868,8 +993,8 @@ async def bff_mobile_cancel_task(task_id: int, user=Depends(require_role("mechan
 
 @app.post("/bff/mobile/quality/tasks/{task_id}/check", tags=["BFF Mobile"])
 async def bff_mobile_quality_check(
-    task_id: int,
     data: QualityCheckData,
+    task_id: int = Path(..., gt=0),
     user=Depends(require_role("quality_engineer", "admin")),
 ):
     with get_db() as conn:

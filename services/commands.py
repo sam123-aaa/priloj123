@@ -42,6 +42,26 @@ class InvalidStatusTransitionError(Exception):
     pass
 
 
+def _require_owner_or_admin_with_audit(conn, user, owner_id, endpoint, resource_type, resource_id):
+    try:
+        require_owner_or_admin(user, owner_id)
+    except HTTPException:
+        log_transaction(
+            conn,
+            action="security_idor_denied",
+            endpoint=endpoint,
+            user_id=user.get("user_id"),
+            role_code=user.get("role_code"),
+            details={
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "owner_id": owner_id,
+            },
+        )
+        conn.commit()
+        raise
+
+
 def create_plan_with_tasks(session: Session, recommendation_ids, planned_date, user):
     plan_ids = []
     task_ids = []
@@ -302,7 +322,7 @@ def confirm_faults(conn, fault_ids, action: str, user: dict):
         fault = cur.fetchone()
         if not fault:
             raise HTTPException(status_code=404, detail=f"Неисправность {fault_id} не найдена")
-        require_owner_or_admin(user, fault["owner_id"])
+        _require_owner_or_admin_with_audit(conn, user, fault["owner_id"], "/faults/confirm", "fault", fault_id)
         cur.execute(
             """
             UPDATE faults
@@ -323,7 +343,7 @@ def create_recommendation(conn, fault_id: int, recommendation_text: str, priorit
     if not fault:
         raise HTTPException(status_code=404, detail="Неисправность не найдена")
 
-    require_owner_or_admin(user, fault["owner_id"])
+    _require_owner_or_admin_with_audit(conn, user, fault["owner_id"], "/recommendations", "fault", fault_id)
     cur.execute(
         """
         INSERT INTO maintenance_recommendations (fault_id, recommendation_text, created_by, owner_id, priority)
@@ -344,7 +364,7 @@ def create_quality_check(conn, task_id: int, status: str, notes: str, user: dict
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
-    require_owner_or_admin(user, task["owner_id"])
+    _require_owner_or_admin_with_audit(conn, user, task["owner_id"], "/quality-checks", "task", task_id)
     cur.execute(
         """
         INSERT INTO quality_checks (task_id, inspector_id, check_date, status, notes, owner_id)

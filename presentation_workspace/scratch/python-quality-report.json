@@ -1,0 +1,41 @@
+{
+  "pptx": "D:\\куцебо апи\\PythonProject1\\presentation_workspace\\output\\maintenance_api_presentation.pptx",
+  "exists": true,
+  "size": 38125,
+  "slides": [
+    {
+      "slide": 1,
+      "placeholder_flags": [],
+      "chars": 33852
+    },
+    {
+      "slide": 2,
+      "placeholder_flags": [],
+      "chars": 60938
+    },
+    {
+      "slide": 3,
+      "placeholder_flags": [],
+      "chars": 26831
+    },
+    {
+      "slide": 4,
+      "placeholder_flags": [],
+      "chars": 54550
+    },
+    {
+      "slide": 5,
+      "placeholder_flags": [],
+      "chars": 40381
+    },
+    {
+      "slide": 6,
+      "placeholder_flags": [],
+      "chars": 56531
+    }
+  ],
+  "failures": [],
+  "slide_count": 6,
+  "media_count": 0,
+  "zero_media": []
+}

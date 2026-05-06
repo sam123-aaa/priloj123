@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f6fb">
+  <title>Maintenance Mobile</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="kicker">Mobile client</p>
+        <h1>Maintenance</h1>
+      </div>
+      <button id="logoutButton" class="icon-button hidden" type="button" aria-label="Выйти">Выйти</button>
+    </header>
+
+    <section id="loginCard" class="card login-card">
+      <div class="section-title">
+        <h2>Вход</h2>
+        <span id="sessionBadge" class="badge">Не авторизован</span>
+      </div>
+      <form id="loginForm" class="form-grid">
+        <label>Email
+          <input id="emailInput" name="email" type="email" autocomplete="username" value="temp-metrologist@example.com" required>
+        </label>
+        <label>Пароль
+          <input id="passwordInput" name="password" type="password" autocomplete="current-password" value="Metrologist123!" required>
+        </label>
+        <label class="api-field">API
+          <input id="apiBaseInput" name="apiBase" type="url">
+        </label>
+        <button id="loginButton" class="primary" type="submit">Войти</button>
+      </form>
+    </section>
+
+    <section id="workspace" class="workspace hidden">
+      <nav class="tabs" aria-label="Разделы">
+        <button class="tab active" data-tab="measurements" type="button">Измерения</button>
+        <button class="tab" data-tab="mechanic" type="button">Механик</button>
+        <button class="tab" data-tab="quality" type="button">Качество</button>
+      </nav>
+
+      <section id="measurementsPanel" class="card panel active" data-panel="measurements">
+        <div class="section-title">
+          <h2>Измерение</h2>
+          <button id="refreshComponents" class="secondary" type="button">Обновить</button>
+        </div>
+        <label>Компонент
+          <select id="componentSelect"></select>
+        </label>
+        <label>Показатель
+          <select id="metricSelect">
+            <option value="gap">Люфт</option>
+            <option value="temperature">Температура</option>
+            <option value="pressure">Давление</option>
+            <option value="vibration">Вибрация</option>
+          </select>
+        </label>
+        <div class="metric-note" id="metricInfo">Выберите компонент</div>
+        <label>Значение
+          <div class="stepper">
+            <button type="button" data-delta="-1">-1</button>
+            <button type="button" data-delta="-0.1">-0.1</button>
+            <input id="measurementValue" type="number" inputmode="decimal" step="0.1" value="0.15">
+            <button type="button" data-delta="0.1">+0.1</button>
+            <button type="button" data-delta="1">+1</button>
+          </div>
+        </label>
+        <div class="button-row">
+          <button id="clearValue" class="secondary" type="button">Очистить</button>
+          <button id="sendMeasurement" class="primary" type="button">Отправить</button>
+        </div>
+        <pre id="measurementResult" class="result-box">Ожидает действия</pre>
+      </section>
+
+      <section id="mechanicPanel" class="card panel" data-panel="mechanic">
+        <div class="section-title">
+          <h2>Задачи механика</h2>
+          <button id="refreshMechanicTasks" class="secondary" type="button">Обновить</button>
+        </div>
+        <label>Задача
+          <select id="mechanicTaskSelect"></select>
+        </label>
+        <div id="mechanicTaskInfo" class="metric-note">Задача не выбрана</div>
+        <label>Результат
+          <input id="mechanicResult" type="text" value="Выполнено в мобильном клиенте">
+        </label>
+        <div class="button-row three">
+          <button class="secondary" data-action="start" type="button">Старт</button>
+          <button class="primary" data-action="finish" type="button">Готово</button>
+          <button class="secondary" data-action="cancel" type="button">Отмена</button>
+        </div>
+        <pre id="mechanicOutput" class="result-box">Ожидает действия</pre>
+      </section>
+
+      <section id="qualityPanel" class="card panel" data-panel="quality">
+        <div class="section-title">
+          <h2>Контроль качества</h2>
+          <button id="refreshQualityTasks" class="secondary" type="button">Обновить</button>
+        </div>
+        <label>Задача
+          <select id="qualityTaskSelect"></select>
+        </label>
+        <div id="qualityTaskInfo" class="metric-note">Задача не выбрана</div>
+        <label>Статус
+          <select id="qualityStatus">
+            <option value="passed">passed</option>
+            <option value="failed">failed</option>
+            <option value="needs_rework">needs_rework</option>
+          </select>
+        </label>
+        <label>Примечание
+          <input id="qualityNotes" type="text" value="Проверка завершена успешно">
+        </label>
+        <button id="saveQuality" class="primary" type="button">Сохранить проверку</button>
+        <pre id="qualityOutput" class="result-box">Ожидает проверки</pre>
+      </section>
+    </section>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+  </main>
+  <script src="src/app.js"></script>
+</body>
+</html>

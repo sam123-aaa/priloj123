@@ -85,6 +85,15 @@ function setError(message) {
   errorBox.classList.remove("hidden");
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function renderTable(containerId, rows) {
   const container = document.getElementById(containerId);
   if (!container) {
@@ -96,7 +105,7 @@ function renderTable(containerId, rows) {
   }
 
   const columns = Object.keys(rows[0]);
-  const header = columns.map((column) => `<th>${column}</th>`).join("");
+  const header = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
   const body = rows
     .map((row) => {
       const cells = columns
@@ -122,11 +131,11 @@ function renderTaskCards(containerId, rows) {
     .map(
       (row) => `
       <article class="task-card">
-        <strong>#${row.task_id || row.id}</strong>
-        <div>${row.description || "-"}</div>
-        <div class="muted">status: ${row.status || "-"}</div>
-        <div class="muted">planned_date: ${row.planned_date || "-"}</div>
-        <div class="muted">equipment: ${row.equipment_name || "-"}</div>
+        <strong>#${escapeHtml(row.task_id || row.id)}</strong>
+        <div>${escapeHtml(row.description || "-")}</div>
+        <div class="muted">status: ${escapeHtml(row.status || "-")}</div>
+        <div class="muted">planned_date: ${escapeHtml(row.planned_date || "-")}</div>
+        <div class="muted">equipment: ${escapeHtml(row.equipment_name || "-")}</div>
       </article>
     `
     )
@@ -146,11 +155,11 @@ function setOptions(selectId, rows, valueKey, labelBuilder, emptyLabel) {
     return;
   }
   if (!rows || rows.length === 0) {
-    select.innerHTML = `<option value="">${emptyLabel}</option>`;
+    select.innerHTML = `<option value="">${escapeHtml(emptyLabel)}</option>`;
     return;
   }
   select.innerHTML = rows
-    .map((row) => `<option value="${row[valueKey]}">${labelBuilder(row)}</option>`)
+    .map((row) => `<option value="${escapeHtml(row[valueKey])}">${escapeHtml(labelBuilder(row))}</option>`)
     .join("");
 }
 
@@ -159,9 +168,9 @@ function formatCell(value) {
     return "—";
   }
   if (typeof value === "object") {
-    return `<pre>${JSON.stringify(value, null, 2)}</pre>`;
+    return `<pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre>`;
   }
-  return String(value);
+  return escapeHtml(value);
 }
 
 async function loginFromForm(form, state, onSuccess) {

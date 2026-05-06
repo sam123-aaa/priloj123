@@ -1,0 +1,8 @@
+{
+  "appId": "com.maintenance.mobile",
+  "appName": "Maintenance Mobile",
+  "webDir": ".",
+  "server": {
+    "androidScheme": "https"
+  }
+}

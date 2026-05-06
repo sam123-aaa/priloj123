@@ -1,0 +1,14 @@
+{
+  "workspace": "D:\\куцебо апи\\PythonProject1\\presentation_workspace",
+  "pptx": "D:\\куцебо апи\\PythonProject1\\presentation_workspace\\output\\maintenance_api_presentation.pptx",
+  "checks": {
+    "output_hygiene": {
+      "output_dir": "D:\\куцебо апи\\PythonProject1\\presentation_workspace\\output",
+      "unexpected_files": []
+    }
+  },
+  "failures": [
+    "PPTX package inspection failed: unzip -Z1 D:\\куцебо апи\\PythonProject1\\presentation_workspace\\output\\maintenance_api_presentation.pptx failed"
+  ],
+  "warnings": []
+}

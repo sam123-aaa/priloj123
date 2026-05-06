@@ -11,7 +11,14 @@ class StrictApiModel(BaseModel):
 
 
 def _reject_script_payload(value: Any):
-    if isinstance(value, str) and re.search(r"<\s*/?\s*script\b|javascript\s*:", value, re.IGNORECASE):
+    dangerous_pattern = (
+        r"<\s*/?\s*(script|iframe|object|embed|svg|style|link|meta)\b"
+        r"|javascript\s*:"
+        r"|on(error|click|load|mouseover|focus|submit)\s*="
+        r"|expression\s*\("
+        r"|url\s*\(\s*['\"]?\s*javascript\s*:"
+    )
+    if isinstance(value, str) and re.search(dangerous_pattern, value, re.IGNORECASE):
         raise ValueError("HTML/script payload is not allowed")
     return value
 
@@ -135,6 +142,35 @@ class DelayedReportData(ReportData):
 
 class BffReportCommandData(ReportData):
     delay_seconds: int = Field(default=0, ge=0, le=3600)
+
+
+class AccountStatusData(StrictApiModel):
+    is_active: bool
+    admin_password: str = Field(min_length=1, max_length=256)
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value):
+        return _reject_script_payload(value)
+
+
+class RoleChangeData(StrictApiModel):
+    role_code: str = Field(min_length=3, max_length=80)
+    admin_password: str = Field(min_length=1, max_length=256)
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("role_code")
+    @classmethod
+    def validate_role_code(cls, value):
+        if not re.fullmatch(r"[a-z_]+", value):
+            raise ValueError("role_code may contain lowercase letters and underscores only")
+        return value
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value):
+        return _reject_script_payload(value)
 
 
 class TaskEnqueueResponse(BaseModel):

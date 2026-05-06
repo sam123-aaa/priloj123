@@ -37,6 +37,7 @@ Thumbs.db
 node_modules/
 dist/
 build/
+.gradle/
 .next/
 .vite/
 

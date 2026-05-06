@@ -47,6 +47,7 @@ def _load_user_by_auth_id(auth_user_id, email=None):
             """
             SELECT
                 p.legacy_user_id,
+                COALESCE(p.is_active, TRUE) AS is_active,
                 r.code AS role
             FROM user_roles ur
             JOIN roles r ON r.id = ur.role_id
@@ -61,6 +62,8 @@ def _load_user_by_auth_id(auth_user_id, email=None):
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    if not user["is_active"]:
+        raise HTTPException(status_code=403, detail="Account is disabled")
 
     return {
         "user_id": user["legacy_user_id"],
@@ -79,6 +82,7 @@ def _load_user_by_email(email):
             SELECT
                 p.user_id AS auth_user_id,
                 p.legacy_user_id,
+                COALESCE(p.is_active, TRUE) AS is_active,
                 r.code AS role
             FROM profiles p
             JOIN user_roles ur ON ur.user_id = p.user_id
@@ -93,6 +97,8 @@ def _load_user_by_email(email):
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    if not user["is_active"]:
+        raise HTTPException(status_code=403, detail="Account is disabled")
 
     return {
         "user_id": user["legacy_user_id"],

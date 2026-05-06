@@ -52,6 +52,7 @@ Swagger UI is available at `/docs`.
 - Reports: `POST /reports/generate`, `POST /reports/generate-delayed`, `GET /reports/status/{task_id}`, `GET /reports/jobs`, `GET /reports/document/{task_id}`
 - BFF: `/bff/web/*`, `/bff/mobile/*`, `/bff/desktop/*`
 - Observability: `GET /observability/metrics`, `GET /observability/hot-points`
+- Admin security: `GET /api/users`, `GET /api/roles`, `POST /api/users/{user_id}/account-status`, `POST /api/users/{user_id}/role`
 
 ## CQRS And Queue
 
@@ -69,6 +70,30 @@ Read-cache entries are short-lived and are invalidated after every command that 
 - Rate limiting is enabled with `SECURITY_RATE_LIMIT_PER_MINUTE`.
 - Responses include security headers, including CSP, frame denial and content sniffing protection.
 - Local development tokens have configurable TTL and refresh flow. Supabase refresh tokens are proxied through `/auth/refresh`.
+- IDOR protection is enforced with role checks plus owner checks on resource ids. Horizontal IDOR is blocked because non-admin users only read or update rows owned by their token user id. Vertical IDOR is blocked by RBAC on admin, manager, mechanic, expert and quality endpoints.
+- `GET /csrf-token` returns a CSRF token and sets a `csrf_token` cookie. Unsafe browser requests with a CSRF cookie must also send `X-CSRF-Token`; unsafe requests from untrusted `Origin` or `Referer` are rejected. Bearer token auth remains the main API auth mode, which reduces CSRF exposure because browsers do not attach Bearer tokens automatically.
+- Report downloads sanitize the stored file name before `Content-Disposition`; remote URLs, absolute paths, `..` and null bytes are rejected to prevent RFI/LFI-style file path abuse.
+- Admin account protection is server-side. `POST /api/users/{user_id}/account-status` and `POST /api/users/{user_id}/role` are admin-only, require the current admin password, reject extra Burp fields, and block losing the last active admin.
+- `scripts/recover_admin.py` is a server-only recovery tool. There is no public API for emergency admin restore.
+- API CSP is strict for JSON responses. Swagger keeps a relaxed CSP only on `/docs`, because Swagger UI needs inline assets.
+
+## Additional Security Checks
+
+Show these cases in Swagger or an HTTP client:
+
+- Last admin guard: call `POST /api/users/{id}/account-status` for the last active admin with `{"is_active": false, "admin_password": "...", "reason": "test"}`. The API returns `409`.
+- Admin password confirmation: call `POST /api/users/{id}/role` with a wrong `admin_password`. The API returns `403`.
+- Admin self-demotion: admin tries to change own role to `mechanic` or another non-admin role. The API returns `409`.
+- IDOR horizontal: login as a normal user and request another user's report/task id. The API returns `403` or `404`; admin can access the same resource.
+- IDOR vertical: call `/observability/metrics` or `/transactions` as a non-admin. The API returns `403`; admin receives data.
+- CSRF origin check: send `POST /expert/recommendation` with `Origin: https://evil.example`. The API returns `403`.
+- CSRF double submit: call `GET /csrf-token`, then send an unsafe request with the cookie but without `X-CSRF-Token`. The API returns `403`; with matching header and cookie it passes normal auth/validation.
+- Mass assignment: send fields such as `is_admin`, `role`, `owner_id` or `user_id` in a request body. DTO validation returns `422`.
+- XSS/CSS input validation: send `<script>alert(1)</script>`, `<img src=x onerror=alert(1)>`, `<style>body{display:none}</style>` or `javascript:alert(1)` in text fields. Validation returns `422`.
+- RFI/LFI: file names such as `../../.env`, `C:\Windows\win.ini`, `https://evil.example/payload` and null-byte payloads are rejected by the safe file-name helper.
+- Audit: rejected IDOR attempts are logged as `security_idor_denied`; blocked admin changes as `security_last_admin_blocked`; bad admin password checks as `security_admin_password_failed`.
+
+More exact Burp payloads are in `SECURITY_CHECKLIST.md`.
 
 ## Git Workflow
 
@@ -115,3 +140,9 @@ Use this checklist during the teacher review:
    `rbac.py` and query ownership filters use the user from the token, not user-controlled request fields.
 10. API security:
     `main.py` contains rate limiting, CSP, CORS allow-listing and no-store auth responses.
+11. IDOR:
+    Resource commands in `services/commands.py` call `require_owner_or_admin`, and read queries filter by `owner_id` for non-admin users.
+12. CSRF:
+    `/csrf-token` plus middleware in `main.py` demonstrate Origin/Referer validation and double-submit token checking.
+13. RFI/LFI:
+    `services/security.py` rejects unsafe file names before report downloads set the attachment header.

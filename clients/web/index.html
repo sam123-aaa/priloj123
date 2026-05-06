@@ -1,43 +1,49 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Operations Web Client</title>
-  <link rel="stylesheet" href="styles.css?v=20260422-roles-1">
+  <title>Управленческая панель</title>
+  <link rel="stylesheet" href="styles.css?v=20260506-web-ui-1">
 </head>
 <body class="web-page">
   <main class="app-shell">
     <aside class="sidebar">
-      <div id="roleBadge" class="role-badge">Guest</div>
-      <h1 id="shellTitle">Operations Portal</h1>
-      <p id="shellCopy" class="sidebar-copy">Use one web client for manager, tech expert, dispatcher specialist, and admin workflows.</p>
+      <div id="roleBadge" class="role-badge">Менеджер</div>
+      <h1 id="shellTitle">Управленческая панель</h1>
+      <p id="shellCopy" class="sidebar-copy"></p>
 
       <form id="loginForm" class="panel">
-        <h2>Login</h2>
-        <label>Email<input name="email" type="email" required value="temp-manager@example.com"></label>
-        <label>Password<input name="password" type="password" required value="Manager123!"></label>
-        <button type="submit">Sign in</button>
+        <h2>Вход</h2>
+        <label>
+          <span class="field-label">Email</span>
+          <input name="email" type="email" required placeholder="Введите email">
+        </label>
+        <label>
+          <span class="field-label">Пароль</span>
+          <input name="password" type="password" required placeholder="Введите пароль">
+        </label>
+        <button type="submit">Войти</button>
       </form>
 
       <section id="debugPanel" class="panel hidden">
         <h2>API URL</h2>
         <label><input id="apiBaseInput" type="text"></label>
-        <button id="saveApiBase" type="button">Save</button>
+        <button id="saveApiBase" type="button">Сохранить</button>
       </section>
 
       <section class="panel">
-        <h2>Session</h2>
-        <div id="sessionInfo" class="muted">Not signed in</div>
+        <h2>Сессия</h2>
+        <div id="sessionInfo" class="muted">Не авторизован</div>
       </section>
     </aside>
 
     <section class="content">
       <section class="hero-strip">
         <div>
-          <p id="heroEyebrow" class="eyebrow">Unified Web</p>
-          <h2 id="heroTitle">Role-aware operations workspace</h2>
-          <p id="heroCopy" class="sidebar-copy">The interface unlocks the same role actions that are available in the desktop client.</p>
+          <p id="heroEyebrow" class="eyebrow">MANAGER WEB</p>
+          <h2 id="heroTitle">Анализ показателей и шаблоны отчётов</h2>
+          <p id="heroCopy" class="sidebar-copy"></p>
         </div>
       </section>
 
@@ -45,116 +51,116 @@
 
       <section id="managerPanel" class="panel hidden">
         <div class="panel-header">
-          <h2>Manager Dashboard</h2>
-          <button id="refreshDashboard" type="button">Refresh</button>
+          <h2>Dashboard</h2>
+          <button id="refreshDashboard" type="button">Обновить</button>
         </div>
-        <div id="webDashboard" class="table-wrap empty-state">No data yet</div>
+        <div id="webDashboard" class="dashboard-surface"></div>
 
         <div class="panel-header section-gap">
-          <h2>Report Templates</h2>
-          <button id="refreshTemplates" type="button">Refresh</button>
+          <h2>Шаблоны отчётов</h2>
+          <button id="refreshTemplates" type="button">Обновить</button>
         </div>
-        <div id="reportTemplates" class="table-wrap empty-state">No templates yet</div>
+        <div id="reportTemplates" class="table-wrap empty-state">Нет шаблонов</div>
 
         <div class="panel-header section-gap">
-          <h2>Generate Report</h2>
+          <h2>Формирование отчёта</h2>
         </div>
-        <label>Select template
+        <label>
+          <span class="field-label">Какой отчёт сформировать</span>
           <select id="templateSelect">
-            <option value="">Load templates first</option>
+            <option value="">Сначала загрузите шаблоны</option>
           </select>
         </label>
         <div class="report-mode-card">
-          <h3>Run now</h3>
-          <p class="muted">Queue the selected report immediately.</p>
-          <button id="queueReport" type="button">Generate now</button>
+          <h3>Сформировать сразу</h3>
+          <p class="muted">Отчёт сразу попадёт в очередь и начнёт выполняться worker'ом.</p>
+          <button id="queueReport" type="button">Сформировать сейчас</button>
         </div>
         <div class="report-mode-card delayed">
-          <h3>Run later</h3>
-          <p class="muted">Use a delay when the report should start later.</p>
+          <h3>Отложенный запуск</h3>
+          <p class="muted">Используйте задержку, если отчёт нужно сформировать позже.</p>
           <div class="delay-grid">
-            <label>Delay value
+            <label>
+              <span class="field-label">Значение задержки</span>
               <input id="delayValue" type="number" min="1" step="1" value="10">
             </label>
-            <label>Delay unit
+            <label>
+              <span class="field-label">Единица</span>
               <select id="delayUnit">
-                <option value="seconds">seconds</option>
-                <option value="minutes">minutes</option>
-                <option value="hours">hours</option>
+                <option value="seconds">секунды</option>
+                <option value="minutes">минуты</option>
+                <option value="hours">часы</option>
               </select>
             </label>
           </div>
-          <button id="queueDelayedReport" type="button">Generate with delay</button>
+          <button id="queueDelayedReport" type="button">Сформировать с задержкой</button>
         </div>
         <div id="reportResult" class="muted"></div>
 
         <div class="panel-header section-gap">
-          <h2>Background Reports</h2>
-          <button id="refreshReports" type="button">Refresh</button>
+          <h2>Фоновые отчёты</h2>
+          <button id="refreshReports" type="button">Обновить</button>
         </div>
-        <div id="activeReportStatus" class="live-status empty-state">Current report status will appear here.</div>
-        <div id="reportJobs" class="report-list empty-state">No background reports yet</div>
+        <div id="activeReportStatus" class="live-status empty-state">Текущий статус задачи появится здесь</div>
+        <div id="reportJobs" class="report-list empty-state">Фоновых отчётов пока нет</div>
       </section>
 
       <section id="monitoringPanel" class="panel hidden">
         <div class="panel-header">
-          <h2>Shared Monitoring</h2>
-          <button id="refreshMonitoring" type="button">Refresh</button>
+          <h2>Общий мониторинг</h2>
+          <button id="refreshMonitoring" type="button">Обновить</button>
         </div>
-        <p class="muted">Available for tech expert, dispatcher specialist, and admin.</p>
-        <div id="desktopMonitoring" class="table-wrap empty-state">No monitoring data yet</div>
+        <div id="desktopMonitoring" class="table-wrap empty-state">Нет данных мониторинга</div>
       </section>
 
       <section id="expertPanel" class="panel hidden">
         <div class="panel-header">
-          <h2>Tech Expert</h2>
-          <button id="refreshFaults" type="button">Load faults</button>
+          <h2>Эксперт</h2>
+          <button id="refreshFaults" type="button">Загрузить неисправности</button>
         </div>
-        <p class="muted">Review faults, confirm them, and create recommendations.</p>
         <div class="form-grid">
-          <label>Fault
+          <label><span class="field-label">Неисправность</span>
             <select id="faultSelect">
-              <option value="">Load faults first</option>
+              <option value="">Сначала загрузите неисправности</option>
             </select>
           </label>
-          <label>Priority
+          <label><span class="field-label">Приоритет</span>
             <input id="expertPriority" type="text" value="high">
           </label>
         </div>
-        <label>Recommendation text
+        <label><span class="field-label">Текст рекомендации</span>
           <textarea id="recommendationText" rows="4">Inspect the equipment and replace the worn assembly.</textarea>
         </label>
         <div class="action-row">
-          <button id="createRecommendation" type="button">Create recommendation</button>
-          <button id="confirmFault" type="button">Confirm fault</button>
+          <button id="createRecommendation" type="button">Создать рекомендацию</button>
+          <button id="confirmFault" type="button">Подтвердить неисправность</button>
         </div>
-        <div id="expertResult" class="json-box empty-state">Expert actions will appear here.</div>
+        <div id="expertResult" class="json-box empty-state">Действия эксперта появятся здесь</div>
       </section>
 
       <section id="dispatcherPanel" class="panel hidden">
         <div class="panel-header">
-          <h2>Dispatcher Specialist</h2>
-          <button id="refreshRecommendations" type="button">Load recommendations</button>
+          <h2>Диспетчер</h2>
+          <button id="refreshRecommendations" type="button">Загрузить рекомендации</button>
         </div>
-        <p class="muted">Select a recommendation and create a maintenance plan.</p>
         <div class="form-grid">
-          <label>Recommendation
+          <label><span class="field-label">Рекомендация</span>
             <select id="recommendationSelect">
-              <option value="">Load recommendations first</option>
+              <option value="">Сначала загрузите рекомендации</option>
             </select>
           </label>
-          <label>Planned date
+          <label><span class="field-label">Плановая дата</span>
             <input id="planDate" type="date" value="2026-04-30">
           </label>
         </div>
         <div class="action-row">
-          <button id="createPlan" type="button">Create plan</button>
+          <button id="createPlan" type="button">Создать план</button>
         </div>
-        <div id="dispatcherResult" class="json-box empty-state">Dispatcher actions will appear here.</div>
+        <div id="dispatcherResult" class="json-box empty-state">Действия диспетчера появятся здесь</div>
       </section>
     </section>
   </main>
 
-  <script src="app.js?v=20260422-roles-1"></script>
+  <script src="app.js?v=20260506-web-ui-1"></script>
 </body>
 </html>

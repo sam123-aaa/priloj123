@@ -85,6 +85,7 @@ def apply_public_auth_schema(assignments: List[dict]):
                 legacy_user_id INTEGER UNIQUE NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 full_name TEXT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW()
             );
 
@@ -120,12 +121,13 @@ def apply_public_auth_schema(assignments: List[dict]):
         for item in assignments:
             cur.execute(
                 """
-                INSERT INTO profiles (user_id, legacy_user_id, email, full_name)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO profiles (user_id, legacy_user_id, email, full_name, is_active)
+                VALUES (%s, %s, %s, %s, TRUE)
                 ON CONFLICT (user_id) DO UPDATE
                 SET legacy_user_id = EXCLUDED.legacy_user_id,
                     email = EXCLUDED.email,
-                    full_name = EXCLUDED.full_name
+                    full_name = EXCLUDED.full_name,
+                    is_active = TRUE
                 """,
                 (item["auth_user_id"], item["legacy_user_id"], item["email"], item.get("full_name")),
             )

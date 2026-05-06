@@ -133,12 +133,12 @@ def record_worker_task(task_name: str, status: str, duration_ms: float):
     record_request("WORKER", task_name, status_code, duration_ms)
 
 
-def check_rate_limit(request: Request, limit_per_minute: int) -> Tuple[bool, int]:
+def check_rate_limit(request: Request, limit_per_minute: int, subject: Optional[str] = None) -> Tuple[bool, int]:
     if limit_per_minute <= 0:
         return True, limit_per_minute
 
     client_host = request.client.host if request.client else "unknown"
-    key = (client_host, request.url.path)
+    key = (client_host, subject or "anonymous", request.url.path)
     now = time.monotonic()
     window_start = now - 60
     bucket = _RATE_LIMIT_STATE[key]

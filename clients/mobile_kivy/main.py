@@ -4,8 +4,14 @@ import os
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.network.urlrequest import UrlRequest
-from kivy.properties import BooleanProperty, StringProperty
+from kivy.properties import BooleanProperty, ObjectProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.spinner import Spinner
+from kivy.uix.textinput import TextInput
+from kivy.core.window import Window
+from kivy.utils import platform
 
 METRIC_PRESETS = {
     "gap": {"parameter_name": "Люфт", "unit": "мм", "min_value": None, "max_value": None},
@@ -21,348 +27,811 @@ METRIC_PRESETS = {
 
 DEFAULT_MEASUREMENT_OPTIONS = list(METRIC_PRESETS.values())
 
+
+def default_api_base():
+    if os.getenv("API_BASE_URL"):
+        return os.getenv("API_BASE_URL")
+    if platform == "android":
+        return "http://10.0.2.2:8000"
+    return "http://127.0.0.1:8000"
+
+
+class FullTouchButton(Button):
+    def collide_point(self, x, y):
+        return self.x <= x <= self.right and self.y <= y <= self.top
+
+    def on_touch_down(self, touch):
+        if self.disabled or not self.collide_point(*touch.pos):
+            return False
+        touch.grab(self)
+        self.state = "down"
+        self.dispatch("on_press")
+        return True
+
+    def on_touch_up(self, touch):
+        if touch.grab_current is not self:
+            return False
+        touch.ungrab(self)
+        self.state = "normal"
+        if self.collide_point(*touch.pos) or self.always_release:
+            self.dispatch("on_release")
+        return True
+
+
+class FullTouchSpinner(Spinner):
+    def collide_point(self, x, y):
+        return self.x <= x <= self.right and self.y <= y <= self.top
+
+
+class FullTouchTextInput(TextInput):
+    def collide_point(self, x, y):
+        return self.x <= x <= self.right and self.y <= y <= self.top
+
+    def on_touch_down(self, touch):
+        if self.disabled or not self.collide_point(*touch.pos):
+            return False
+        self.focus = True
+        return super().on_touch_down(touch) or True
+
+
+class TouchSafeScrollView(ScrollView):
+    def on_touch_down(self, touch):
+        if self.disabled or not self.collide_point(*touch.pos):
+            return False
+        for child in reversed(self.children):
+            if child.dispatch("on_touch_down", touch):
+                return True
+        return super().on_touch_down(touch)
+
 KV = """
 <RoleSection@BoxLayout>:
     orientation: "vertical"
     size_hint_y: None
     height: self.minimum_height
     spacing: "10dp"
+    padding: "14dp", "12dp", "14dp", "14dp"
     canvas.before:
         Color:
-            rgba: 0.09, 0.09, 0.23, 1
+            rgba: 1, 1, 1, 1
         RoundedRectangle:
             pos: self.pos
             size: self.size
-            radius: [20, 20, 20, 20]
-    padding: "14dp"
+            radius: [18, 18, 18, 18]
+
+<SectionTitle@Label>:
+    size_hint_y: None
+    height: "30dp"
+    color: 0.05, 0.07, 0.12, 1
+    bold: True
+    font_size: "18sp"
+    halign: "left"
+    valign: "middle"
+    text_size: self.size
 
 <FieldLabel@Label>:
     size_hint_y: None
-    height: "22dp"
-    color: 0.78, 0.77, 0.92, 1
+    height: "20dp"
+    color: 0.36, 0.39, 0.46, 1
+    font_size: "13sp"
     halign: "left"
+    valign: "middle"
     text_size: self.size
 
-<EditInput@TextInput>:
+<InfoLabel@Label>:
+    size_hint_y: None
+    height: max(self.texture_size[1] + dp(8), dp(28))
+    color: 0.36, 0.39, 0.46, 1
+    font_size: "13sp"
+    halign: "left"
+    valign: "top"
+    text_size: self.width, None
+
+<StatusLabel@Label>:
+    size_hint_y: None
+    height: max(self.texture_size[1] + dp(8), dp(34))
+    color: 0.16, 0.18, 0.24, 1
+    font_size: "14sp"
+    halign: "left"
+    valign: "middle"
+    text_size: self.width, None
+
+<EditInput@FullTouchTextInput>:
     multiline: False
     write_tab: False
-    foreground_color: 0.04, 0.04, 0.09, 1
-    background_color: 0.96, 0.96, 1, 1
-    cursor_color: 0.10, 0.09, 0.22, 1
+    foreground_color: 0.05, 0.07, 0.12, 1
+    background_normal: ""
+    background_active: ""
+    background_color: 0.94, 0.95, 0.97, 1
+    cursor_color: 0.0, 0.48, 1, 1
+    selection_color: 0.0, 0.48, 1, 0.25
     size_hint_y: None
     height: "48dp"
-    padding: "10dp", "12dp"
+    padding: "12dp", "13dp"
+
+<RoundedSpinner@FullTouchSpinner>:
+    size_hint_y: None
+    height: "50dp"
+    font_size: "14sp"
+    color: 0.05, 0.07, 0.12, 1
+    background_normal: ""
+    background_down: ""
+    background_color: 0.94, 0.95, 0.97, 1
+    option_cls: "SpinnerOption"
+
+<PrimaryButton@Button>:
+    size_hint_y: None
+    height: "50dp"
+    font_size: "15sp"
+    bold: True
+    color: 1, 1, 1, 1
+    background_normal: ""
+    background_down: ""
+    background_color: 0, 0, 0, 0
+    canvas.before:
+        Color:
+            rgba: (0.0, 0.48, 1, 1) if not self.disabled else (0.70, 0.75, 0.82, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14, 14, 14, 14]
+
+<SecondaryButton@Button>:
+    size_hint_y: None
+    height: "48dp"
+    font_size: "14sp"
+    color: (0.0, 0.36, 0.80, 1) if not self.disabled else (0.55, 0.58, 0.64, 1)
+    background_normal: ""
+    background_down: ""
+    background_color: 0, 0, 0, 0
+    canvas.before:
+        Color:
+            rgba: (0.90, 0.95, 1, 1) if not self.disabled else (0.93, 0.94, 0.96, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14, 14, 14, 14]
+
+<StepperButton@Button>:
+    size_hint_y: None
+    height: "48dp"
+    font_size: "14sp"
+    bold: True
+    color: 0.0, 0.36, 0.80, 1
+    background_normal: ""
+    background_down: ""
+    background_color: 0, 0, 0, 0
+    canvas.before:
+        Color:
+            rgba: 0.90, 0.95, 1, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [12, 12, 12, 12]
 
 <MobileRoot>:
     orientation: "vertical"
-    padding: "14dp"
-    spacing: "12dp"
+    padding: "12dp", "10dp", "12dp", "10dp"
+    spacing: "10dp"
     canvas.before:
         Color:
-            rgba: 0.10, 0.09, 0.22, 1
+            rgba: 0.95, 0.96, 0.98, 1
         Rectangle:
             pos: self.pos
             size: self.size
 
-    Label:
-        text: "Мобильный клиент"
+    BoxLayout:
+        orientation: "vertical"
         size_hint_y: None
-        height: "42dp"
-        color: 0.97, 0.97, 1, 1
-        bold: True
-        font_size: "22sp"
-
-    Label:
-        text: "Сбор данных, обслуживание и контроль качества"
-        size_hint_y: None
-        height: "26dp"
-        color: 0.78, 0.77, 0.92, 1
-
-    RoleSection:
+        height: "82dp"
+        padding: "4dp", "4dp", "4dp", 0
+        spacing: "2dp"
         Label:
-            text: "Авторизация"
+            text: "Maintenance"
             size_hint_y: None
-            height: "32dp"
-            color: 1, 1, 1, 1
-        TextInput:
-            id: api_base
-            text: root.api_base
-            opacity: 1 if root.debug_mode else 0
-            disabled: not root.debug_mode
-            multiline: False
-            hint_text: "API base URL"
-            size_hint_y: None
-            height: "42dp" if root.debug_mode else 0
-        TextInput:
-            id: email
-            text: "temp-metrologist@example.com"
-            multiline: False
-            hint_text: "Email"
-            size_hint_y: None
-            height: "42dp"
-        TextInput:
-            id: password
-            password: True
-            text: "Metrologist123!"
-            multiline: False
-            hint_text: "Password"
-            size_hint_y: None
-            height: "42dp"
-        Button:
-            text: "Login"
-            size_hint_y: None
-            height: "44dp"
-            on_press: root.login(email.text, password.text)
+            height: "36dp"
+            color: 0.05, 0.07, 0.12, 1
+            bold: True
+            font_size: "28sp"
+            halign: "left"
+            valign: "middle"
+            text_size: self.size
         Label:
-            text: root.session_info
+            text: root.role_hint
             size_hint_y: None
-            height: "32dp"
-            color: 0.75, 0.74, 0.92, 1
+            height: "38dp"
+            color: 0.36, 0.39, 0.46, 1
+            font_size: "13sp"
+            halign: "left"
+            valign: "top"
+            text_size: self.width, None
 
-    Label:
-        text: root.role_hint
-        size_hint_y: None
-        height: "26dp"
-        color: 0.80, 0.79, 0.94, 1
-
-    Label:
-        text: root.touch_info
-        size_hint_y: None
-        height: "24dp"
-        color: 0.95, 0.86, 0.50, 1
-
-    ScrollView:
+    TouchSafeScrollView:
         do_scroll_x: False
-        scroll_timeout: 250
-        scroll_distance: "18dp"
+        bar_width: "3dp"
+        scroll_timeout: 180
+        scroll_distance: "24dp"
         BoxLayout:
             orientation: "vertical"
-            spacing: "12dp"
+            spacing: "10dp"
+            padding: 0, 0, 0, "10dp"
             size_hint_y: None
             height: self.minimum_height
 
             RoleSection:
+                SectionTitle:
+                    text: "Вход"
+                EditInput:
+                    id: api_base
+                    text: root.api_base
+                    opacity: 1 if root.debug_mode else 0
+                    disabled: not root.debug_mode
+                    hint_text: "API base URL"
+                    height: "48dp" if root.debug_mode else 0
+                EditInput:
+                    id: email
+                    text: "temp-metrologist@example.com"
+                    hint_text: "Email"
+                EditInput:
+                    id: password
+                    password: True
+                    text: "Metrologist123!"
+                    hint_text: "Пароль"
+                PrimaryButton:
+                    text: "Войти" if not root.is_busy else "Загрузка..."
+                    disabled: root.is_busy
+                    on_press: root.login(email.text, password.text)
+                StatusLabel:
+                    text: root.session_info
+
+            RoleSection:
                 opacity: 1 if root.show_metrologist else 0
                 disabled: not root.show_metrologist
-                size_hint_y: None
                 height: self.minimum_height if root.show_metrologist else 0
-                Label:
-                    text: "Метролог"
-                    size_hint_y: None
-                    height: "28dp"
-                    color: 1, 1, 1, 1
-                Button:
+                SectionTitle:
+                    text: "Измерение"
+                SecondaryButton:
                     text: "Обновить оборудование"
-                    size_hint_y: None
-                    height: "44dp"
+                    disabled: root.is_busy
                     on_press: root.load_components()
-                Spinner:
+                RoundedSpinner:
                     id: component_spinner
                     text: "Компоненты загружаются автоматически"
                     values: []
-                    size_hint_y: None
-                    height: "48dp"
                     on_text: root.select_component(self.text)
-                Label:
+                InfoLabel:
                     text: root.selected_component_info
-                    size_hint_y: None
-                    height: "34dp"
-                    color: 0.78, 0.77, 0.92, 1
-                    text_size: self.width, None
                 FieldLabel:
-                    text: "Показатель измерения"
-                Spinner:
+                    text: "Показатель"
+                RoundedSpinner:
                     id: metric_spinner
                     text: root.selected_metric_label
                     values: ["Люфт", "Температура", "Давление", "Вибрация"]
-                    size_hint_y: None
-                    height: "50dp"
                     on_text: root.select_metric_label(self.text)
-                Label:
+                InfoLabel:
                     text: root.selected_metric_info
-                    size_hint_y: None
-                    height: "34dp"
-                    color: 0.78, 0.77, 0.92, 1
-                    text_size: self.width, None
                 FieldLabel:
                     text: "Значение"
                 BoxLayout:
                     size_hint_y: None
-                    height: "54dp"
-                    spacing: "8dp"
-                    Button:
+                    height: "48dp"
+                    spacing: "6dp"
+                    StepperButton:
                         text: "-1"
-                        size_hint_x: 0.18
+                        size_hint_x: 0.16
                         on_press: root.adjust_measurement_value(-1)
-                    Button:
+                    StepperButton:
                         text: "-0.1"
-                        size_hint_x: 0.2
+                        size_hint_x: 0.20
                         on_press: root.adjust_measurement_value(-0.1)
                     EditInput:
                         id: value_input
                         text: "0.15"
                         input_filter: root.numeric_input_filter
-                        hint_text: "Значение"
-                        font_size: "20sp"
+                        hint_text: "0"
+                        font_size: "19sp"
+                        halign: "center"
                         on_text: root.on_measurement_value_change(self.text)
-                    Button:
+                    StepperButton:
                         text: "+0.1"
-                        size_hint_x: 0.2
+                        size_hint_x: 0.20
                         on_press: root.adjust_measurement_value(0.1)
-                    Button:
+                    StepperButton:
                         text: "+1"
-                        size_hint_x: 0.18
+                        size_hint_x: 0.16
                         on_press: root.adjust_measurement_value(1)
-                Label:
+                InfoLabel:
                     text: root.measurement_value_info
-                    size_hint_y: None
-                    height: "38dp"
-                    color: 0.78, 0.77, 0.92, 1
-                    text_size: self.width, None
                 BoxLayout:
                     size_hint_y: None
-                    height: "42dp"
+                    height: "50dp"
                     spacing: "8dp"
-                    Button:
+                    SecondaryButton:
                         text: "Очистить"
+                        disabled: root.is_busy
                         on_press: root.clear_measurement_value()
-                Button:
-                    text: "Отправить измерение"
-                    size_hint_y: None
-                    height: "44dp"
-                    on_press: root.send_measurement()
+                    PrimaryButton:
+                        text: "Отправить"
+                        disabled: root.is_busy
+                        on_press: root.send_measurement()
 
             RoleSection:
                 opacity: 1 if root.show_mechanic else 0
                 disabled: not root.show_mechanic
-                size_hint_y: None
                 height: self.minimum_height if root.show_mechanic else 0
-                Label:
-                    text: "Механик"
-                    size_hint_y: None
-                    height: "28dp"
-                    color: 1, 1, 1, 1
-                Button:
-                    text: "Обновить задачи механика"
-                    size_hint_y: None
-                    height: "44dp"
+                SectionTitle:
+                    text: "Задачи механика"
+                SecondaryButton:
+                    text: "Обновить задачи"
+                    disabled: root.is_busy
                     on_press: root.load_mechanic_tasks()
-                Spinner:
+                RoundedSpinner:
                     id: mechanic_task_spinner
                     text: "Сначала загрузите задачи"
                     values: []
-                    size_hint_y: None
-                    height: "48dp"
                     on_text: root.select_mechanic_task(self.text)
-                Label:
+                InfoLabel:
                     text: root.selected_mechanic_task_info
-                    size_hint_y: None
-                    height: "50dp"
-                    color: 0.78, 0.77, 0.92, 1
-                    text_size: self.width, None
-                Label:
+                StatusLabel:
                     text: root.mechanic_action_hint
-                    size_hint_y: None
-                    height: "28dp"
-                    color: 0.78, 0.77, 0.92, 1
-                    text_size: self.width, None
                 FieldLabel:
                     text: "Результат выполнения"
                 EditInput:
                     id: mechanic_result
                     text: "Выполнено в мобильном клиенте"
-                    hint_text: "Результат для finish"
+                    hint_text: "Результат для завершения"
+                    disabled: root.is_busy
                 BoxLayout:
                     size_hint_y: None
-                    height: "44dp"
+                    height: "50dp"
                     spacing: "8dp"
-                    Button:
-                        text: "Start"
+                    SecondaryButton:
+                        text: "Старт"
+                        disabled: root.is_busy
                         on_press: root.mechanic_action("start")
-                    Button:
-                        text: "Finish"
+                    PrimaryButton:
+                        text: "Готово"
+                        disabled: root.is_busy
                         on_press: root.mechanic_action("finish")
-                    Button:
-                        text: "Cancel"
+                    SecondaryButton:
+                        text: "Отмена"
+                        disabled: root.is_busy
                         on_press: root.mechanic_action("cancel")
 
             RoleSection:
                 opacity: 1 if root.show_quality else 0
                 disabled: not root.show_quality
-                size_hint_y: None
                 height: self.minimum_height if root.show_quality else 0
-                Label:
-                    text: "Контролёр качества"
-                    size_hint_y: None
-                    height: "28dp"
-                    color: 1, 1, 1, 1
-                Button:
-                    text: "Задачи на проверку"
-                    size_hint_y: None
-                    height: "44dp"
+                SectionTitle:
+                    text: "Контроль качества"
+                SecondaryButton:
+                    text: "Обновить проверки"
+                    disabled: root.is_busy
                     on_press: root.load_quality_tasks()
-                Spinner:
+                RoundedSpinner:
                     id: quality_task_spinner
                     text: "Сначала загрузите задачи"
                     values: []
-                    size_hint_y: None
-                    height: "48dp"
                     on_text: root.select_quality_task(self.text)
-                Label:
+                InfoLabel:
                     text: root.selected_quality_task_info
-                    size_hint_y: None
-                    height: "50dp"
-                    color: 0.78, 0.77, 0.92, 1
-                    text_size: self.width, None
-                Label:
+                StatusLabel:
                     text: root.quality_action_hint
-                    size_hint_y: None
-                    height: "28dp"
-                    color: 0.78, 0.77, 0.92, 1
-                    text_size: self.width, None
                 FieldLabel:
                     text: "Статус проверки"
-                Spinner:
+                RoundedSpinner:
                     id: quality_status
                     text: "passed"
                     values: ["passed", "failed", "needs_rework"]
-                    size_hint_y: None
-                    height: "48dp"
                 FieldLabel:
                     text: "Примечание"
                 EditInput:
                     id: quality_notes
                     text: "Проверка завершена успешно"
                     hint_text: "Примечание"
-                Button:
+                    disabled: root.is_busy
+                PrimaryButton:
                     text: "Сохранить проверку"
-                    size_hint_y: None
-                    height: "44dp"
+                    disabled: root.is_busy
                     on_press: root.submit_quality_check()
 
             RoleSection:
-                Label:
+                SectionTitle:
                     text: "Ответ API"
-                    size_hint_y: None
-                    height: "28dp"
-                    color: 1, 1, 1, 1
-                Label:
+                InfoLabel:
                     text: root.output_text
-                    size_hint_y: None
-                    height: max(self.texture_size[1], dp(220))
-                    text_size: self.width, None
-                    valign: "top"
-                    color: 0.84, 0.84, 0.96, 1
+"""
+
+
+KV = """
+<RoleSection@BoxLayout>:
+    orientation: "vertical"
+    spacing: "8dp"
+    padding: "14dp", "10dp", "14dp", "12dp"
+    canvas.before:
+        Color:
+            rgba: 1, 1, 1, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [18, 18, 18, 18]
+
+<SectionTitle@Label>:
+    size_hint_y: None
+    height: "28dp"
+    color: 0.05, 0.07, 0.12, 1
+    bold: True
+    font_size: "17sp"
+    halign: "left"
+    valign: "middle"
+    text_size: self.size
+
+<FieldLabel@Label>:
+    size_hint_y: None
+    height: "18dp"
+    color: 0.36, 0.39, 0.46, 1
+    font_size: "12sp"
+    halign: "left"
+    valign: "middle"
+    text_size: self.size
+
+<InfoLabel@Label>:
+    size_hint_y: None
+    height: max(self.texture_size[1] + dp(4), dp(22))
+    color: 0.36, 0.39, 0.46, 1
+    font_size: "12sp"
+    halign: "left"
+    valign: "top"
+    text_size: self.width, None
+
+<StatusLabel@Label>:
+    size_hint_y: None
+    height: "28dp"
+    color: 0.16, 0.18, 0.24, 1
+    font_size: "13sp"
+    halign: "left"
+    valign: "middle"
+    text_size: self.width, None
+
+<EditInput@FullTouchTextInput>:
+    multiline: False
+    write_tab: False
+    foreground_color: 0.05, 0.07, 0.12, 1
+    background_normal: ""
+    background_active: ""
+    background_color: 0.94, 0.95, 0.97, 1
+    cursor_color: 0.0, 0.48, 1, 1
+    selection_color: 0.0, 0.48, 1, 0.25
+    size_hint_y: None
+    height: "44dp"
+    padding: "12dp", "11dp"
+
+<RoundedSpinner@FullTouchSpinner>:
+    size_hint_y: None
+    height: "44dp"
+    font_size: "13sp"
+    color: 0.05, 0.07, 0.12, 1
+    background_normal: ""
+    background_down: ""
+    background_color: 0.94, 0.95, 0.97, 1
+    option_cls: "SpinnerOption"
+
+<PrimaryButton@Button>:
+    size_hint_y: None
+    height: "46dp"
+    font_size: "14sp"
+    bold: True
+    color: 1, 1, 1, 1
+    background_normal: ""
+    background_down: ""
+    background_color: 0, 0, 0, 0
+    canvas.before:
+        Color:
+            rgba: (0.0, 0.48, 1, 1) if not self.disabled else (0.70, 0.75, 0.82, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14, 14, 14, 14]
+
+<SecondaryButton@Button>:
+    size_hint_y: None
+    height: "46dp"
+    font_size: "13sp"
+    color: (0.0, 0.36, 0.80, 1) if not self.disabled else (0.55, 0.58, 0.64, 1)
+    background_normal: ""
+    background_down: ""
+    background_color: 0, 0, 0, 0
+    canvas.before:
+        Color:
+            rgba: (0.90, 0.95, 1, 1) if not self.disabled else (0.93, 0.94, 0.96, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14, 14, 14, 14]
+
+<StepperButton@Button>:
+    size_hint_y: None
+    height: "44dp"
+    font_size: "13sp"
+    bold: True
+    color: 0.0, 0.36, 0.80, 1
+    background_normal: ""
+    background_down: ""
+    background_color: 0, 0, 0, 0
+    canvas.before:
+        Color:
+            rgba: 0.90, 0.95, 1, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [12, 12, 12, 12]
+
+<MobileRoot>:
+    orientation: "vertical"
+    padding: "10dp"
+    spacing: "8dp"
+    canvas.before:
+        Color:
+            rgba: 0.95, 0.96, 0.98, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        orientation: "vertical"
+        size_hint_y: None
+        height: "62dp" if root.is_logged_in else "74dp"
+        padding: "4dp", "2dp", "4dp", 0
+        spacing: 0
+        Label:
+            text: "Maintenance"
+            size_hint_y: None
+            height: "34dp"
+            color: 0.05, 0.07, 0.12, 1
+            bold: True
+            font_size: "26sp"
+            halign: "left"
+            valign: "middle"
+            text_size: self.size
+        Label:
+            text: root.role_hint
+            size_hint_y: None
+            height: "26dp" if root.is_logged_in else "38dp"
+            color: 0.36, 0.39, 0.46, 1
+            font_size: "12sp"
+            halign: "left"
+            valign: "top"
+            text_size: self.width, None
+
+    RoleSection:
+        size_hint_y: None
+        height: "260dp" if not root.is_logged_in else "92dp"
+        spacing: "8dp" if not root.is_logged_in else "2dp"
+        SectionTitle:
+            text: "Вход" if not root.is_logged_in else "Сессия"
+        BoxLayout:
+            orientation: "vertical"
+            size_hint_y: None
+            height: self.minimum_height if not root.is_logged_in else 0
+            opacity: 1 if not root.is_logged_in else 0
+            disabled: root.is_logged_in
+            spacing: "8dp"
+            EditInput:
+                id: api_base
+                text: root.api_base
+                opacity: 1 if root.debug_mode else 0
+                disabled: not root.debug_mode
+                hint_text: "API base URL"
+                height: "44dp" if root.debug_mode else 0
+            EditInput:
+                id: email
+                text: "temp-metrologist@example.com"
+                hint_text: "Email"
+            EditInput:
+                id: password
+                password: True
+                text: "Metrologist123!"
+                hint_text: "Пароль"
+            PrimaryButton:
+                text: "Войти" if not root.is_busy else "Загрузка..."
+                disabled: root.is_busy
+                on_release: root.login(email.text, password.text)
+        BoxLayout:
+            size_hint_y: None
+            height: "28dp" if not root.is_logged_in else "46dp"
+            spacing: "8dp"
+            StatusLabel:
+                text: root.session_info
+            SecondaryButton:
+                text: "Выйти"
+                opacity: 1 if root.is_logged_in else 0
+                disabled: not root.is_logged_in
+                height: "44dp"
+                size_hint_x: 0.34
+                on_release: root.logout()
+
+    BoxLayout:
+        orientation: "vertical"
+        size_hint_y: 1
+        spacing: "8dp"
+
+        RoleSection:
+            opacity: 1 if root.show_metrologist else 0
+            disabled: not root.show_metrologist
+            size_hint_y: 1 if root.show_metrologist else None
+            height: 0 if not root.show_metrologist else self.height
+            SectionTitle:
+                text: "Измерение"
+            BoxLayout:
+                size_hint_y: None
+                height: "44dp"
+                spacing: "8dp"
+                SecondaryButton:
+                    text: "Обновить"
+                    disabled: root.is_busy
+                    on_release: root.load_components()
+                RoundedSpinner:
+                    id: component_spinner
+                    text: "Выберите компонент"
+                    values: []
+                    on_text: root.select_component(self.text)
+            InfoLabel:
+                text: root.selected_component_info
+            FieldLabel:
+                text: "Показатель"
+            RoundedSpinner:
+                id: metric_spinner
+                text: root.selected_metric_label
+                values: ["Люфт", "Температура", "Давление", "Вибрация"]
+                on_text: root.select_metric_label(self.text)
+            InfoLabel:
+                text: root.selected_metric_info
+            FieldLabel:
+                text: "Значение"
+            BoxLayout:
+                size_hint_y: None
+                height: "44dp"
+                spacing: "6dp"
+                StepperButton:
+                    text: "-1"
+                    size_hint_x: 0.16
+                    on_release: root.adjust_measurement_value(-1)
+                StepperButton:
+                    text: "-0.1"
+                    size_hint_x: 0.20
+                    on_release: root.adjust_measurement_value(-0.1)
+                EditInput:
+                    id: value_input
+                    text: "0.15"
+                    input_filter: root.numeric_input_filter
+                    hint_text: "0"
+                    font_size: "18sp"
+                    halign: "center"
+                    on_text: root.on_measurement_value_change(self.text)
+                StepperButton:
+                    text: "+0.1"
+                    size_hint_x: 0.20
+                    on_release: root.adjust_measurement_value(0.1)
+                StepperButton:
+                    text: "+1"
+                    size_hint_x: 0.16
+                    on_release: root.adjust_measurement_value(1)
+            InfoLabel:
+                text: root.measurement_value_info
+            BoxLayout:
+                size_hint_y: None
+                height: "46dp"
+                spacing: "8dp"
+                SecondaryButton:
+                    text: "Очистить"
+                    disabled: root.is_busy
+                    on_release: root.clear_measurement_value()
+                PrimaryButton:
+                    text: "Отправить"
+                    disabled: root.is_busy
+                    on_release: root.send_measurement()
+            InfoLabel:
+                text: root.output_text
+                size_hint_y: 1
+
+        RoleSection:
+            opacity: 1 if root.show_mechanic else 0
+            disabled: not root.show_mechanic
+            size_hint_y: 1 if root.show_mechanic else None
+            height: 0 if not root.show_mechanic else self.height
+            SectionTitle:
+                text: "Задачи механика"
+            SecondaryButton:
+                text: "Обновить задачи"
+                disabled: root.is_busy
+                on_release: root.load_mechanic_tasks()
+            RoundedSpinner:
+                id: mechanic_task_spinner
+                text: "Сначала загрузите задачи"
+                values: []
+                on_text: root.select_mechanic_task(self.text)
+            InfoLabel:
+                text: root.selected_mechanic_task_info
+            StatusLabel:
+                text: root.mechanic_action_hint
+            FieldLabel:
+                text: "Результат выполнения"
+            EditInput:
+                id: mechanic_result
+                text: "Выполнено в мобильном клиенте"
+                hint_text: "Результат для завершения"
+                disabled: root.is_busy
+            BoxLayout:
+                size_hint_y: None
+                height: "46dp"
+                spacing: "8dp"
+                SecondaryButton:
+                    text: "Старт"
+                    disabled: root.is_busy
+                    on_release: root.mechanic_action("start")
+                PrimaryButton:
+                    text: "Готово"
+                    disabled: root.is_busy
+                    on_release: root.mechanic_action("finish")
+                SecondaryButton:
+                    text: "Отмена"
+                    disabled: root.is_busy
+                    on_release: root.mechanic_action("cancel")
+            InfoLabel:
+                text: root.output_text
+                size_hint_y: 1
+
+        RoleSection:
+            opacity: 1 if root.show_quality else 0
+            disabled: not root.show_quality
+            size_hint_y: 1 if root.show_quality else None
+            height: 0 if not root.show_quality else self.height
+            SectionTitle:
+                text: "Контроль качества"
+            SecondaryButton:
+                text: "Обновить проверки"
+                disabled: root.is_busy
+                on_release: root.load_quality_tasks()
+            RoundedSpinner:
+                id: quality_task_spinner
+                text: "Сначала загрузите задачи"
+                values: []
+                on_text: root.select_quality_task(self.text)
+            InfoLabel:
+                text: root.selected_quality_task_info
+            StatusLabel:
+                text: root.quality_action_hint
+            FieldLabel:
+                text: "Статус проверки"
+            RoundedSpinner:
+                id: quality_status
+                text: "passed"
+                values: ["passed", "failed", "needs_rework"]
+            FieldLabel:
+                text: "Примечание"
+            EditInput:
+                id: quality_notes
+                text: "Проверка завершена успешно"
+                hint_text: "Примечание"
+                disabled: root.is_busy
+            PrimaryButton:
+                text: "Сохранить проверку"
+                disabled: root.is_busy
+                on_release: root.submit_quality_check()
+            InfoLabel:
+                text: root.output_text
+                size_hint_y: 1
 """
 
 
 class MobileRoot(BoxLayout):
-    api_base = StringProperty("http://127.0.0.1:8000")
+    api_base = StringProperty(default_api_base())
     session_info = StringProperty("Не авторизован")
     output_text = StringProperty("Здесь будут ответы API")
     show_metrologist = BooleanProperty(False)
     show_mechanic = BooleanProperty(False)
     show_quality = BooleanProperty(False)
+    is_busy = BooleanProperty(False)
+    is_logged_in = BooleanProperty(False)
     debug_mode = BooleanProperty(bool(int(os.getenv("CLIENT_DEBUG_UI", "0"))))
     role_hint = StringProperty("Входите под metrologist, mechanic или quality_engineer")
     touch_info = StringProperty("touch: ждёт нажатия")
@@ -376,6 +845,13 @@ class MobileRoot(BoxLayout):
     mechanic_action_hint = StringProperty("Выберите задачу, чтобы увидеть доступные действия")
     selected_quality_task_info = StringProperty("Задача не выбрана")
     quality_action_hint = StringProperty("Выберите завершённую задачу для проверки")
+    selected_component_id = ObjectProperty(None, allownone=True)
+    selected_metric_name = StringProperty("")
+    selected_metric_unit = StringProperty("")
+    selected_mechanic_task_id = ObjectProperty(None, allownone=True)
+    selected_mechanic_task_status = StringProperty("")
+    selected_quality_task_id = ObjectProperty(None, allownone=True)
+    selected_quality_task_status = StringProperty("")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -385,35 +861,48 @@ class MobileRoot(BoxLayout):
         self.metric_options_by_key = {key: dict(value) for key, value in METRIC_PRESETS.items()}
         self.mechanic_tasks_by_label = {}
         self.quality_tasks_by_label = {}
-        self.selected_component_id = None
-        self.selected_metric_name = ""
-        self.selected_metric_unit = ""
-        self.selected_mechanic_task_id = None
-        self.selected_mechanic_task_status = ""
-        self.selected_quality_task_id = None
-        self.selected_quality_task_status = ""
-
-    def on_touch_down(self, touch):
-        self.touch_info = f"touch: {int(touch.x)}, {int(touch.y)}"
-        return super().on_touch_down(touch)
 
     def request(self, path, method="GET", payload=None, on_success=None):
-        headers = {"Content-Type": "application/json"}
+        if self.is_busy:
+            return
+        headers = {"Content-Type": "application/json; charset=utf-8"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         self.output_text = f"{method} {path}..."
+        self.is_busy = True
 
-        UrlRequest(
-            f"{self.ids.api_base.text.rstrip('/')}{path}",
-            req_body=json.dumps(payload, ensure_ascii=False) if payload is not None else None,
-            req_headers=headers,
-            method=method,
-            on_success=on_success or self._on_success,
-            on_failure=self._on_error,
-            on_error=self._on_error,
-        )
+        def handle_success(req, result):
+            self.is_busy = False
+            (on_success or self._on_success)(req, result)
+
+        def handle_error(req, error):
+            self.is_busy = False
+            self._on_error(req, error)
+
+        req_body = None
+        if payload is not None:
+            req_body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+        try:
+            UrlRequest(
+                f"{self.ids.api_base.text.rstrip('/')}{path}",
+                req_body=req_body,
+                req_headers=headers,
+                method=method,
+                on_success=handle_success,
+                on_failure=handle_error,
+                on_error=handle_error,
+                timeout=12,
+            )
+        except Exception as exc:
+            self.is_busy = False
+            self.output_text = f"Ошибка запроса: {exc}"
 
     def login(self, email, password):
+        if not email.strip() or not password:
+            self.output_text = "Заполните email и пароль"
+            return
+        self.session_info = "Выполняется вход..."
         self.request(
             "/login",
             method="POST",
@@ -424,6 +913,7 @@ class MobileRoot(BoxLayout):
     def _on_login_success(self, _req, result):
         self.token = result["access_token"]
         self.role = result["role"]
+        self.is_logged_in = True
         self.session_info = f"Роль: {self.role}"
         self.show_metrologist = self.role in {"metrologist", "admin"}
         self.show_mechanic = self.role in {"mechanic", "admin"}
@@ -442,6 +932,29 @@ class MobileRoot(BoxLayout):
             self.load_mechanic_tasks()
         if self.show_quality:
             self.load_quality_tasks()
+
+    def logout(self):
+        self.token = ""
+        self.role = ""
+        self.is_logged_in = False
+        self.show_metrologist = False
+        self.show_mechanic = False
+        self.show_quality = False
+        self.session_info = "Не авторизован"
+        self.role_hint = "Входите под metrologist, mechanic или quality_engineer"
+        self.output_text = "Сессия завершена"
+        self.selected_component_id = None
+        self.selected_component_info = "Компонент не выбран"
+        self.selected_metric_name = ""
+        self.selected_metric_unit = ""
+        self.selected_mechanic_task_id = None
+        self.selected_mechanic_task_status = ""
+        self.selected_mechanic_task_info = "Задача не выбрана"
+        self.selected_quality_task_id = None
+        self.selected_quality_task_status = ""
+        self.selected_quality_task_info = "Задача не выбрана"
+        self.mechanic_action_hint = "Выберите задачу, чтобы увидеть доступные действия"
+        self.quality_action_hint = "Выберите завершённую задачу для проверки"
 
     def load_components(self):
         self.request("/bff/mobile/components", on_success=self._on_components_loaded)
@@ -829,6 +1342,11 @@ class MobileRoot(BoxLayout):
 
 class MobileClientApp(App):
     def build(self):
+        preview_size = os.getenv("MOBILE_PREVIEW_SIZE")
+        if preview_size and platform not in {"android", "ios"}:
+            width, height = preview_size.lower().split("x", 1)
+            Window.size = (int(width), int(height))
+        Window.softinput_mode = "below_target"
         Builder.load_string(KV)
         return MobileRoot()
 
